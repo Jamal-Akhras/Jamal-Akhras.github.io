@@ -14,14 +14,12 @@ const fade: Variants = {
 };
 
 /**
- * Landing page — v4 (pretty + smooth, with Projects links)
- * - Header nav includes a Projects link → "/projects"
- * - Hero primary CTA goes to "/projects" (secondary = #contact)
- * - Single page sections: #about, #values, #contact
- *
- * Requirements:
- *   npm i framer-motion react-router-dom
- *   Tailwind v4 + @tailwindcss/postcss already set up; index.css includes Tailwind and optional base tweaks.
+ * Landing page — v5
+ * - Adds two new About subsections under the current About card:
+ *   1) Academics → text offset to the right, two stacked images on the left
+ *   2) Extra‑Curriculars → text offset to the left, two stacked images on the right
+ * - Uses Tailwind + framer‑motion animations consistent with the existing style.
+ * - Place your images in /public/images (e.g., /images/academics-1.jpg).
  */
 
 export default function LandingPage() {
@@ -47,6 +45,8 @@ export default function LandingPage() {
           </a>
           <nav className="flex items-center gap-1 text-zinc-300">
             <a href="#about" className="rounded-xl px-3 py-2 hover:bg-white/5">About</a>
+            <a href="#about-academics" className="rounded-xl px-3 py-2 hover:bg-white/5">Academics</a>
+            <a href="#about-extracurriculars" className="rounded-xl px-3 py-2 hover:bg-white/5">Extra‑Curriculars</a>
             <a href="#values" className="rounded-xl px-3 py-2 hover:bg-white/5">Values</a>
             <a href="#contact" className="rounded-xl px-3 py-2 hover:bg-white/5">Contact</a>
             <Link to="/projects" className="rounded-xl px-3 py-2 hover:bg-white/5">Projects</Link>
@@ -59,15 +59,15 @@ export default function LandingPage() {
         <section className="relative mx-auto max-w-7xl px-4 pb-12 pt-24 sm:px-6 sm:pt-32">
           <motion.div variants={fadeUp} initial="hidden" animate="show" className="text-center">
             <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-zinc-300">
-              [Master of Computing with Honors in Computer Science and Artificial Intelligence / Software/AI Engineer]
+              Master of Computing with Honors in Computer Science and Artificial Intelligence / Software/AI Engineer
             </span>
             <h1 className="mx-auto mt-4 max-w-5xl text-balance text-5xl font-extrabold tracking-tight sm:text-7xl">
               <span className="bg-gradient-to-br from-indigo-200 via-white to-pink-200 bg-clip-text text-transparent">
-                Practical ML, Polished Fronts.
+                Practical ML, Polished Fronts
               </span>
             </h1>
             <p className="mx-auto mt-5 max-w-2xl text-pretty text-base text-zinc-300 sm:text-lg">
-              [Part Toy Maker - Part Software/AI Engineer. I like turning random ideas into things you can try.]
+              Part Toy Maker - Part Software/AI Engineer. I like turning random ideas into things you can try
             </p>
             <div className="mt-8 flex items-center justify-center gap-3">
               <Link
@@ -84,7 +84,7 @@ export default function LandingPage() {
               </a>
             </div>
 
-        {/* Stats */}
+            {/* Stats */}
             <div className="mx-auto mt-10 grid max-w-4xl grid-cols-2 gap-3 md:grid-cols-4">
               {[
                 { k: "MComp(hons) CS & AI",   v: "University of Bath" },
@@ -100,11 +100,11 @@ export default function LandingPage() {
                   <dd className="text-2xl font-extrabold text-white">{s.v}</dd>
                 </div>
               ))}
-          </div>
+            </div>
           </motion.div>
         </section>
 
-        {/* About */}
+        {/* About (existing) */}
         <section id="about" className="relative mx-auto max-w-3xl px-4 py-12 sm:px-6">
           <motion.div
             variants={fadeUp}
@@ -126,6 +126,123 @@ export default function LandingPage() {
           </motion.div>
         </section>
 
+        {/* NEW: About — Academics (images left, text offset right) */}
+        <section id="about-academics" className="relative mx-auto max-w-7xl px-4 py-12 sm:px-6">
+          <div className="grid grid-cols-1 items-center gap-8 lg:grid-cols-12">
+            {/* Image stack (left) */}
+            <motion.div
+              variants={fadeUp}
+              initial="hidden"
+              whileInView="show"
+              viewport={{ once: true, margin: "-80px" }}
+              className="order-2 flex flex-col gap-4 lg:order-1 lg:col-span-5"
+            >
+              <div
+                className="relative overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-1 ring-1 ring-white/10"
+                style={{ aspectRatio: '3 / 4' }} 
+              >
+                <img
+                  src="/images/academics-1.jpg"
+                  alt="Academic presentation or research poster"
+                  className="absolute inset-0 h-full w-full rounded-xl object-cover"
+                />
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-1 ring-1 ring-white/10">
+                <img
+                  src="/images/academics-2.jpg"
+                  alt="Coding or lab work"
+                  className="h-56 w-full rounded-xl object-cover sm:h-64 md:h-72"
+                />
+              </div>
+            </motion.div>
+
+            {/* Text (right, offset) */}
+            <motion.div
+              variants={fadeUp}
+              initial="hidden"
+              whileInView="show"
+              viewport={{ once: true, margin: "-80px" }}
+              className="order-1 lg:order-2 lg:col-span-7 lg:pl-10"
+            >
+              <div className="rounded-3xl border border-white/10 bg-white/5 p-6 sm:p-8 backdrop-blur">
+                <h2 className="text-2xl font-bold sm:text-3xl">Academic Stuff</h2>
+                {/* TODO: Replace with your own academic summary and bullets */}
+                <p className="mt-2 text-zinc-300">
+                  I’m a recent MComp (Hons) in Computer Science & AI gradute from the University of Bath.
+                  I build reliable ML systems, end-to-end clean APIs, reproducible training/eval,
+                  and fast inference focused on real-world control and perception from simulation to deployment.
+                  I care about robust policies, good datasets, and evaluators that reflect actual use.
+                </p>
+                <ul className="mt-4 grid list-disc gap-2 pl-5 text-zinc-300">
+                  <li>Using Proximal Policy Optimization with Adversarial Motion Priors to Aid
+                      Rehabilitation</li>
+                  <li>Reinforcement Learning with Adversarial Motion Priors for Surface EMG-Driven Prosthetic Control</li>
+                  <li>Obstruction Detection AI for Train Platforms</li>
+                  <li>LSTM Based Stock Predictor</li>
+                  <li>Constraint Propagration based Sudoku Solving AI</li>
+                  <li>Object Detection Lacrosse Stick and Athlete Traking System</li>
+                </ul>
+              </div>
+            </motion.div>
+          </div>
+        </section>
+
+        {/* NEW: About — Extra‑Curriculars (text left, images right) */}
+        <section id="about-extracurriculars" className="relative mx-auto max-w-7xl px-4 py-12 sm:px-6">
+          <div className="grid grid-cols-1 items-center gap-8 lg:grid-cols-12">
+            {/* Text (left, offset) */}
+            <motion.div
+              variants={fadeUp}
+              initial="hidden"
+              whileInView="show"
+              viewport={{ once: true, margin: "-80px" }}
+              className="order-1 lg:col-span-7 lg:pr-10"
+            >
+              <div className="rounded-3xl border border-white/10 bg-white/5 p-6 sm:p-8 backdrop-blur">
+                <h2 className="text-2xl font-bold sm:text-3xl">Extra‑Curriculars</h2>
+                {/* TODO: Replace with your own extra‑curricular summary and bullets */}
+                <p className="mt-2 text-zinc-300">
+                  Outside work I’m usually on a lacrosse pitch, out with friends, or building something random.
+                  I’ve captained Bath’s 1st Team, represented English Universities twice, earned a Blues Award,
+                  and won golf and chess tournaments.
+                </p>
+                <ul className="mt-4 grid list-disc gap-2 pl-5 text-zinc-300">
+                  <li>Bath Lacrosse 1st Team Captain; set training standards and team culture</li>
+                  <li>Bath Lacrosse Social Secretary; organized events and community meet-ups</li>
+                  <li>2 Time English Universities Representative</li>
+                  <li>Low Single Digit Golfer</li>
+                  <li>Part Time Self Proclaimed Chef</li>
+                  <li>2256 Peak Chess ELO</li>
+                </ul>
+              </div>
+            </motion.div>
+
+            {/* Image stack (right) */}
+            <motion.div
+              variants={fadeUp}
+              initial="hidden"
+              whileInView="show"
+              viewport={{ once: true, margin: "-80px" }}
+              className="order-2 flex flex-col gap-4 lg:col-span-5"
+            >
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-1 ring-1 ring-white/10">
+                <img
+                  src="/images/extras-1.jpg"
+                  alt="On‑field action shot"
+                  className="h-56 w-full rounded-xl object-cover sm:h-64 md:h-72"
+                />
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-1 ring-1 ring-white/10">
+                <img
+                  src="/images/extras-2.jpg"
+                  alt="Team or community event"
+                  className="h-56 w-full rounded-xl object-cover sm:h-64 md:h-72"
+                />
+              </div>
+            </motion.div>
+          </div>
+        </section>
+
         {/* Values */}
         <section id="values" className="relative mx-auto max-w-7xl px-4 py-12 sm:px-6">
           <div className="flex items-end justify-between gap-4">
@@ -134,9 +251,9 @@ export default function LandingPage() {
           </div>
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {[
-              { title: "Clarity & Speed", body: "Ship minimal surfaces, measure performance, cut noise.", icon: "⚡" },
-              { title: "Practical ML", body: "Turn RL/vision work into usable products.", icon: "🎯" },
-              { title: "Reliable Engineering", body: "Testing, reproducible pipelines, and sensible cloud.", icon: "🧠" },
+              { title: "Team-first leadership", body: "Captain Mindset: Standards, Accountability, and Support.", icon: "⚡" },
+              { title: "Boring is beautiful", body: "Logs, docs, and alerts so future-me says thanks.", icon: "🛠️" },
+              { title: "Curiosity with discipline", body: "Prototype fast; benchmark and reproduce before scaling.", icon: "🧪" },
             ].map((c) => (
               <motion.div
                 key={c.title}
@@ -172,7 +289,9 @@ export default function LandingPage() {
               </div>
               <div className="flex gap-3">
                 <a href="mailto:jamal@alakhras.net" className="inline-flex rounded-2xl bg-[#0b0c10] px-5 py-3 font-semibold text-white ring-1 ring-black/10">Email me</a>
-                <a href="https://github.com/Jamal-Akhras" target="_blank" rel="noreferrer" className="inline-flex rounded-2xl border border-[#0b0c10]/20 bg-white/90 px-5 py-3 font-semibold">GitHub</a>
+                <a href="https://github.com/Jamal-Akhras" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-2xl border border-[#0b0c10]/20 bg-white/90 px-5 py-3 font-semibold">GitHub</a>
+                <a href="https://linkedin.com/in/jamal-akhras-43120b358" className="inline-flex items-center gap-2 rounded-2xl bg-[#0A66C2] px-5 py-3 font-semibold text-white ring-1 ring-[#0A66C2]/30 hover:bg-[#004182] hover:ring-[#004182]/40 focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/60 focus:ring-offset-2 focus:ring-offset-[#0b0c10] active:scale-[0.98] transition">LinkedIn</a>
+                
               </div>
             </div>
           </motion.div>
