@@ -1,8 +1,10 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+
 import LandingPage from "./LandingPage";
 import Projects from "./Projects";
+import DinoGame from "./DinoGame"; 
 import "./index.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
@@ -12,6 +14,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         <Route path="/" element={<LandingPage />} />
         <Route path="/projects" element={<Projects />} />
         <Route path="*" element={<LandingPage />} />
+        <Route path="/dino-game" element={<DinoGame />} /> 
       </Routes>
     </BrowserRouter>
   </React.StrictMode>

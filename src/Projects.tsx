@@ -23,26 +23,34 @@ export default function Projects() {
 
         <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {/* Card: AI Racer */}
-          <article className="rounded-2xl border border-white/10 bg-white/5 p-5">
+          <Link to="/ai-racer" className="block rounded-2xl border border-white/10 bg-white/5 p-5 hover:bg-white/5 transition group">
             <h3 className="font-semibold">AI Racer</h3>
             <p className="mt-1 text-sm text-zinc-300">Design a Course and Watch a Car Learn The Optimal Path</p>
             <div className="mt-4 flex gap-2">
-              <button className="rounded-xl border border-white/10 px-4 py-2 text-zinc-400" disabled>
+              <span className="rounded-xl border border-white/10 px-4 py-2 text-zinc-400">
                 Play (coming soon)
-              </button>
+              </span>
+              <span className="rounded-xl border border-white/10 px-4 py-2 text-white group-hover:bg-white/5">
+                View project
+              </span>
             </div>
-          </article>
+          </Link>
 
           {/* Card: Chrome Dino / Steve */}
-          <article className="rounded-2xl border border-white/10 bg-white/5 p-5">
+          <Link
+            to="/dino-game"
+            className="block rounded-2xl border border-white/10 bg-white/5 p-5 hover:bg-white/10 transition group"
+          >
             <h3 className="font-semibold">Chrome Dino (Steve)</h3>
-            <p className="mt-1 text-sm text-zinc-300">The Classic Game I've Probably Played Too Much</p>
+            <p className="mt-1 text-sm text-zinc-300">
+              The Classic Game I've Probably Played Too Much
+            </p>
             <div className="mt-4 flex gap-2">
-              <button className="rounded-xl border border-white/10 px-4 py-2 text-zinc-400" disabled>
-                Play (coming soon)
-              </button>
+              <span className="rounded-xl border border-white/10 px-4 py-2 text-white group-hover:bg-white/5">
+                Play now
+              </span>
             </div>
-          </article>
+          </Link>
 
           {/* Add more cards later */}
         </div>
