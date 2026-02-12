@@ -1,7 +1,365 @@
 @import "tailwindcss";
 
-@layer base {
-  html { scroll-behavior: smooth; }
-  body { @apply font-sans antialiased bg-[#0b0c10] text-zinc-100; }
-  a { @apply no-underline text-inherit; }         
+/* ========================================
+   DESIGN TOKENS
+   ======================================== */
+
+/* Dark mode (default) */
+:root {
+  --color-bg-base: #0b0c10;
+  --color-bg-elevated: rgba(255, 255, 255, 0.05);
+  --color-bg-hover: rgba(255, 255, 255, 0.10);
+  --color-accent-primary: #8aa2ff;
+  --color-accent-secondary: #ff86cf;
+  --color-text-primary: #f4f4f5;
+  --color-text-secondary: #d4d4d8;
+  --color-text-muted: #b4b4bb;
+  --color-border-subtle: rgba(255, 255, 255, 0.10);
+  --shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+  --shadow-card-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 20px rgba(138, 162, 255, 0.3);
+  --focus-ring: 0 0 0 2px var(--color-bg-base), 0 0 0 4px var(--color-accent-primary);
+
+  /* Blob colors for dark mode */
+  --blob-primary: #8aa2ff;
+  --blob-secondary: #ff86cf;
+  --blob-opacity: 0.25;
+  --grid-opacity: 0.3;
+}
+
+/* Light mode */
+:root.light {
+  --color-bg-base: #f8fafc;
+  --color-bg-elevated: rgba(0, 0, 0, 0.03);
+  --color-bg-hover: rgba(0, 0, 0, 0.06);
+  --color-accent-primary: #6366f1;
+  --color-accent-secondary: #ec4899;
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #475569;
+  --color-text-muted: #64748b;
+  --color-border-subtle: rgba(0, 0, 0, 0.08);
+  --shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.08);
+  --shadow-card-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.12);
+  --shadow-glow: 0 0 20px rgba(99, 102, 241, 0.2);
+  --focus-ring: 0 0 0 2px var(--color-bg-base), 0 0 0 4px var(--color-accent-primary);
+
+  /* Blob colors for light mode */
+  --blob-primary: #818cf8;
+  --blob-secondary: #f472b6;
+  --blob-opacity: 0.15;
+  --grid-opacity: 0.5;
+}
+
+/* ========================================
+   ANIMATIONS (GPU-accelerated)
+   ======================================== */
+
+@keyframes float-blob-1 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(2%, 4%) scale(1.02); }
+}
+
+@keyframes float-blob-2 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-3%, -3%) scale(0.98); }
+}
+
+.animate-float-1 {
+  animation: float-blob-1 20s ease-in-out infinite;
+  will-change: transform;
+}
+
+.animate-float-2 {
+  animation: float-blob-2 25s ease-in-out infinite;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-float-1,
+  .animate-float-2 {
+    animation: none;
+  }
+}
+
+/* Neural network dash animation */
+@keyframes dash {
+  to {
+    stroke-dashoffset: -20;
+  }
+}
+
+.animate-dash {
+  animation: dash 0.8s linear infinite;
+}
+
+/* Comet animation for neural network paths */
+@keyframes comet {
+  0% {
+    stroke-dasharray: 0 100;
+    stroke-dashoffset: 0;
+  }
+  50% {
+    stroke-dasharray: 30 100;
+    stroke-dashoffset: -20;
+  }
+  100% {
+    stroke-dasharray: 0 100;
+    stroke-dashoffset: -100;
+  }
+}
+
+.animate-comet {
+  animation: comet 1.5s ease-in-out infinite;
+}
+
+/* Ambient comet - more frequent appearances */
+@keyframes ambient-comet {
+  0%, 40% {
+    stroke-dasharray: 0 300;
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+  45% {
+    stroke-dasharray: 20 300;
+    stroke-dashoffset: 0;
+    opacity: 0.7;
+  }
+  70% {
+    stroke-dasharray: 20 300;
+    stroke-dashoffset: -80;
+    opacity: 0.7;
+  }
+  85% {
+    stroke-dasharray: 0 300;
+    stroke-dashoffset: -150;
+    opacity: 0;
+  }
+  100% {
+    stroke-dasharray: 0 300;
+    stroke-dashoffset: -150;
+    opacity: 0;
+  }
+}
+
+.animate-ambient-comet-1 {
+  animation: ambient-comet 4s ease-in-out infinite;
+}
+
+.animate-ambient-comet-2 {
+  animation: ambient-comet 5s ease-in-out infinite;
+  animation-delay: 0.8s;
+}
+
+.animate-ambient-comet-3 {
+  animation: ambient-comet 6s ease-in-out infinite;
+  animation-delay: 1.5s;
+}
+
+.animate-ambient-comet-4 {
+  animation: ambient-comet 4.5s ease-in-out infinite;
+  animation-delay: 2.2s;
+}
+
+.animate-ambient-comet-5 {
+  animation: ambient-comet 5.5s ease-in-out infinite;
+  animation-delay: 1s;
+}
+
+/* Vector line pulse animation for state-based reveal */
+@keyframes pulse-line {
+  0%, 100% { opacity: 0.2; }
+  50% { opacity: 0.5; }
+}
+
+.animate-vector-line {
+  animation: pulse-line 2s ease-in-out infinite;
+}
+
+/* Cinematic Bezel Glow for 3D Gates */
+@keyframes bezel-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.gate-glow-top {
+  box-shadow: 0 4px 20px -2px rgba(129, 140, 248, 0.3);
+  border-bottom: 1px solid rgba(129, 140, 248, 0.4);
+  animation: bezel-pulse 3s ease-in-out infinite;
+}
+
+.gate-glow-bottom {
+  box-shadow: 0 -4px 20px -2px rgba(244, 114, 182, 0.3);
+  border-top: 1px solid rgba(244, 114, 182, 0.4);
+  animation: bezel-pulse 3s ease-in-out infinite;
+  animation-delay: 1.5s;
+}
+
+/* Hardware-accelerated 3D transforms */
+.transform-gpu-3d {
+  transform: translateZ(0);
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+}
+
+/* CRT Scanline effect for Terminal */
+@keyframes scanline {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+
+.terminal-scanline::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(129, 140, 248, 0.03) 50%,
+    transparent 100%
+  );
+  height: 200%;
+  animation: scanline 8s linear infinite;
+  pointer-events: none;
+  z-index: 30;
+}
+
+.transmission-noise {
+  background: repeating-radial-gradient(circle, rgba(129,140,248,0.05) 0, transparent 2px);
+  background-size: 4px 4px;
+  backdrop-filter: blur(2px);
+  pointer-events: none;
+}
+
+/* ========================================
+   BASE STYLES
+   ======================================== */
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--color-bg-base);
+  color: var(--color-text-primary);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+/* Discourage image interactions (does not prevent saving) */
+.no-image-interaction {
+  -webkit-user-drag: none;
+  user-drag: none;
+  -webkit-touch-callout: none;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* Accessible focus rings */
+*:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* ========================================
+   COMPONENT CLASSES
+   ======================================== */
+
+/* Primary button - gradient with glow hover */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 1.25rem;
+  border-radius: 1rem;
+  font-weight: 600;
+  background: linear-gradient(135deg, var(--color-accent-primary), var(--color-accent-secondary));
+  color: var(--color-bg-base);
+  box-shadow: var(--shadow-card);
+  transition: transform 200ms, box-shadow 200ms;
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card-hover), var(--shadow-glow);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+/* Secondary button - adapts to theme */
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 1.25rem;
+  border-radius: 1rem;
+  font-weight: 600;
+  background: var(--color-text-primary);
+  color: var(--color-bg-base);
+  box-shadow: var(--shadow-card);
+  transition: transform 200ms, box-shadow 200ms;
+}
+
+.btn-secondary:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card-hover);
+}
+
+.btn-secondary:active {
+  transform: translateY(0);
+}
+
+/* Tertiary button - ghost/outline */
+.btn-tertiary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 1.25rem;
+  border-radius: 1rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-subtle);
+  transition: background 200ms, border-color 200ms;
+}
+
+.btn-tertiary:hover {
+  background: var(--color-bg-hover);
+  border-color: var(--color-border-subtle);
+}
+
+/* Card base */
+.card {
+  border-radius: 1.5rem;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-subtle);
+  box-shadow: var(--shadow-card);
+  transition: transform 200ms, box-shadow 200ms, border-color 200ms;
+}
+
+/* Interactive card with lift effect */
+.card-interactive {
+  border-radius: 1.5rem;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-subtle);
+  box-shadow: var(--shadow-card);
+  transition: transform 200ms, box-shadow 200ms, border-color 200ms;
+  cursor: pointer;
+}
+
+.card-interactive:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-card-hover);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.card-interactive:active {
+  transform: translateY(-2px);
 }

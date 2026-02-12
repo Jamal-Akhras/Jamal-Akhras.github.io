@@ -1,276 +1,388 @@
-import { motion, type Variants } from "framer-motion";
+import { useState, useRef, useEffect } from "react";
+import { motion, AnimatePresence, useSpring } from "framer-motion";
 import { Link } from "react-router-dom";
 
-const EASE = [0.22, 1, 0.36, 1] as const;
+// Components
+import DecorativeBg from "./components/DecorativeBg";
+import { SunIcon, MoonIcon, MenuIcon, XIcon } from "./components/icons";
+import { NeuralNetwork } from "./components/NeuralNetwork";
+import { Terminal } from "./components/Terminal";
 
-const fadeUp: Variants = {
-  hidden: { opacity: 0, y: 12 },
-  show:   { opacity: 1, y: 0, transition: { duration: 0.6, ease: EASE } },
-};
+// Hooks
+import { useTheme } from "./hooks/useTheme";
+import { useMousePosition } from "./hooks/useMousePosition";
 
-const fade: Variants = {
-  hidden: { opacity: 0 },
-  show:   { opacity: 1, transition: { duration: 0.6, ease: EASE } },
-};
-
-/**
- * Landing page — v5
- * - Adds two new About subsections under the current About card:
- *   1) Academics → text offset to the right, two stacked images on the left
- *   2) Extra‑Curriculars → text offset to the left, two stacked images on the right
- * - Uses Tailwind + framer‑motion animations consistent with the existing style.
- * - Place your images in /public/images (e.g., /images/academics-1.jpg).
- */
+// Constants
+import { fadeUp, fade, EASE } from "./constants/animations";
+import { NAV_LINKS, type ActiveNode } from "./constants/terminalContent";
 
 export default function LandingPage() {
+  const { theme, toggleTheme } = useTheme();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [activeNode, setActiveNode] = useState<ActiveNode>(null);
+  const [isQuoteHovered, setIsQuoteHovered] = useState(false);
+
+  // State-based reveal
+  const [isRevealed, setIsRevealed] = useState(false);
+  const [gatesOpen, setGatesOpen] = useState(false);
+  const quoteContainerRef = useRef<HTMLDivElement>(null);
+  const containerRectRef = useRef<DOMRect | null>(null);
+  const [corners, setCorners] = useState<{x: number; y: number}[]>([]);
+  const mousePos = useMousePosition();
+
+  // Delay neural network interactivity until gates finish animating
+  useEffect(() => {
+    if (isRevealed) {
+      const timer = setTimeout(() => setGatesOpen(true), 500);
+      return () => clearTimeout(timer);
+    } else {
+      setGatesOpen(false);
+    }
+  }, [isRevealed]);
+
+  // Smooth mouse position with spring for "silky elastic" vector lines
+  const springConfig = { stiffness: 150, damping: 15 };
+  const smoothX = useSpring(0, springConfig);
+  const smoothY = useSpring(0, springConfig);
+
+  // Update spring targets when mouse moves
+  useEffect(() => {
+    if (containerRectRef.current) {
+      smoothX.set(mousePos.x - containerRectRef.current.left);
+      smoothY.set(mousePos.y - containerRectRef.current.top);
+    }
+  }, [mousePos.x, mousePos.y, smoothX, smoothY]);
+
+  // Calculate corner positions with resize handling
+  useEffect(() => {
+    const updateDimensions = () => {
+      if (quoteContainerRef.current) {
+        const rect = quoteContainerRef.current.getBoundingClientRect();
+        containerRectRef.current = rect;
+        setCorners([
+          { x: 0, y: 0 },                        // top-left (relative)
+          { x: rect.width, y: 0 },               // top-right
+          { x: 0, y: rect.height },              // bottom-left
+          { x: rect.width, y: rect.height }      // bottom-right
+        ]);
+      }
+    };
+
+    updateDimensions();
+    window.addEventListener('resize', updateDimensions);
+    return () => window.removeEventListener('resize', updateDimensions);
+  }, []);
+
   return (
     <div id="top" className="min-h-screen">
-      {/* Decorative background: grid + soft blobs */}
-      <div aria-hidden className="pointer-events-none fixed inset-0 -z-10">
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.04)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.04)_1px,transparent_1px)] bg-[size:24px_24px] opacity-30" />
-        <div className="absolute -top-24 -left-32 h-[65vmax] w-[65vmax] rounded-full blur-3xl opacity-25 bg-[radial-gradient(circle_at_30%_30%,#8aa2ff_0%,transparent_60%)]" />
-        <div className="absolute -bottom-32 -right-32 h-[65vmax] w-[65vmax] rounded-full blur-3xl opacity-25 bg-[radial-gradient(circle_at_65%_40%,#ff86cf_0%,transparent_60%)]" />
-      </div>
+      <DecorativeBg />
 
       {/* Header */}
       <motion.header
         variants={fade}
         initial="hidden"
         animate="show"
-        className="sticky top-0 z-50 border-b border-white/10/50 backdrop-blur supports-[backdrop-filter]:bg-[#0b0c10]/60"
+        className="sticky top-0 z-50 border-b border-border-subtle backdrop-blur supports-[backdrop-filter]:bg-bg-base/60"
       >
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <a href="#top" className="text-lg font-extrabold tracking-tight">
-            J<span className="text-indigo-400">.</span>
+            J<span className="text-accent-primary">.</span>
           </a>
-          <nav className="flex items-center gap-1 text-zinc-300">
-            <a href="#about" className="rounded-xl px-3 py-2 hover:bg-white/5">About</a>
-            <a href="#about-academics" className="rounded-xl px-3 py-2 hover:bg-white/5">Academics</a>
-            <a href="#about-extracurriculars" className="rounded-xl px-3 py-2 hover:bg-white/5">Extra‑Curriculars</a>
-            <a href="#values" className="rounded-xl px-3 py-2 hover:bg-white/5">Values</a>
-            <a href="#contact" className="rounded-xl px-3 py-2 hover:bg-white/5">Contact</a>
-            <Link to="/projects" className="rounded-xl px-3 py-2 hover:bg-white/5">Projects</Link>
+
+          {/* Desktop nav */}
+          <nav className="hidden items-center gap-1 text-text-secondary md:flex">
+            {NAV_LINKS.map((link) => (
+              <a key={link.href} href={link.href} className="rounded-xl px-3 py-2 transition-colors hover:bg-bg-hover">
+                {link.label}
+              </a>
+            ))}
+            <Link to="/projects" className="rounded-xl px-3 py-2 transition-colors hover:bg-bg-hover">Projects</Link>
+            <button
+              onClick={toggleTheme}
+              className="ml-2 rounded-xl p-2 transition-colors hover:bg-bg-hover"
+              aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+            >
+              {theme === 'dark' ? <SunIcon className="h-5 w-5" /> : <MoonIcon className="h-5 w-5" />}
+            </button>
           </nav>
+
+          {/* Mobile menu button */}
+          <div className="flex items-center gap-2 md:hidden">
+            <button
+              onClick={toggleTheme}
+              className="rounded-xl p-2 transition-colors hover:bg-bg-hover"
+              aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+            >
+              {theme === 'dark' ? <SunIcon className="h-5 w-5" /> : <MoonIcon className="h-5 w-5" />}
+            </button>
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="rounded-xl p-2 transition-colors hover:bg-bg-hover"
+              aria-label="Toggle menu"
+            >
+              {mobileMenuOpen ? <XIcon className="h-6 w-6" /> : <MenuIcon className="h-6 w-6" />}
+            </button>
+          </div>
         </div>
+
+        {/* Mobile menu */}
+        <AnimatePresence>
+          {mobileMenuOpen && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="overflow-hidden border-t border-border-subtle bg-bg-base/95 backdrop-blur md:hidden"
+            >
+              <nav className="flex flex-col px-4 py-4">
+                {NAV_LINKS.map((link) => (
+                  <a
+                    key={link.href}
+                    href={link.href}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="rounded-xl px-3 py-3 text-text-secondary transition-colors hover:bg-bg-hover"
+                  >
+                    {link.label}
+                  </a>
+                ))}
+                <Link
+                  to="/projects"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="rounded-xl px-3 py-3 text-text-secondary transition-colors hover:bg-bg-hover"
+                >
+                  Projects
+                </Link>
+              </nav>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.header>
 
       <main>
-        {/* Hero */}
+        {/* Hero with State-Based Reveal */}
         <section className="relative mx-auto max-w-7xl px-4 pb-12 pt-24 sm:px-6 sm:pt-32">
           <motion.div variants={fadeUp} initial="hidden" animate="show" className="text-center">
-            <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-zinc-300">
-              Master of Computing with Honors in Computer Science and Artificial Intelligence / Software/AI Engineer
-            </span>
-            <h1 className="mx-auto mt-4 max-w-5xl text-balance text-5xl font-extrabold tracking-tight sm:text-7xl">
-              <span className="bg-gradient-to-br from-indigo-200 via-white to-pink-200 bg-clip-text text-transparent">
-                Practical ML, Polished Fronts
-              </span>
-            </h1>
-            <p className="mx-auto mt-5 max-w-2xl text-pretty text-base text-zinc-300 sm:text-lg">
-              Part Toy Maker - Part Software/AI Engineer. I like turning random ideas into things you can try
-            </p>
-            <div className="mt-8 flex items-center justify-center gap-3">
-              <Link
-                to="/projects"
-                className="inline-flex items-center rounded-2xl border border-white/10 bg-white/90 px-5 py-3 font-semibold text-[#0b0c10] shadow transition hover:-translate-y-0.5 hover:shadow-lg"
+
+            {/* Main reveal container - only contains the quote */}
+            <div
+              ref={quoteContainerRef}
+              className={`relative mx-auto transition-all duration-500 ${
+                isRevealed && activeNode ? "max-w-6xl" : "max-w-4xl"
+              }`}
+              style={{ minHeight: isRevealed ? "auto" : "280px" }}
+              onMouseEnter={() => setIsQuoteHovered(true)}
+              onMouseLeave={() => setIsQuoteHovered(false)}
+            >
+              <motion.div
+                className={isRevealed ? "relative z-10" : "absolute inset-0 z-10 flex items-center justify-center"}
+                style={{ pointerEvents: gatesOpen ? "auto" : "none" }}
+                animate={{
+                  opacity: isRevealed ? 1 : 0.05,
+                  filter: isRevealed ? "blur(0px)" : "blur(12px)"
+                }}
+                transition={{ type: "spring", stiffness: 80, damping: 20 }}
               >
+                <div className="flex flex-row items-center justify-center gap-12 w-full max-w-7xl mx-auto transition-all duration-700">
+                  <motion.div
+                    className="flex-[1.2] flex items-center justify-center transform-gpu-3d"
+                    animate={{ x: activeNode ? -40 : 0 }}
+                    transition={{ type: "spring", stiffness: 150, damping: 20 }}
+                  >
+                    <NeuralNetwork activeNode={activeNode} setActiveNode={setActiveNode} />
+                  </motion.div>
+
+                  <AnimatePresence mode="popLayout">
+                    {isRevealed && activeNode && (
+                      <div style={{ perspective: "1200px", transformStyle: "preserve-3d" }}>
+                        <motion.div
+                          className="flex-1 max-w-[550px] transform-gpu-3d"
+                          style={{
+                            transformStyle: "preserve-3d",
+                            transformOrigin: "right center"
+                          }}
+                          initial={{ rotateY: -90, z: 0, opacity: 0, filter: "blur(8px)" }}
+                          animate={{
+                            rotateY: 0,
+                            z: 50,
+                            opacity: 1,
+                            filter: "blur(0px)",
+                            boxShadow: "0 0 30px rgba(129,140,248,0.2)"
+                          }}
+                          exit={{ rotateY: -45, z: 0, opacity: 0, filter: "blur(6px)", boxShadow: "none" }}
+                          transition={{ type: "spring", stiffness: 150, damping: 20 }}
+                        >
+                          <Terminal activeNode={activeNode} onClose={() => setActiveNode(null)} />
+                        </motion.div>
+                      </div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </motion.div>
+
+              <div style={{ perspective: "1200px", transformStyle: "preserve-3d" }} className="absolute inset-0 z-20 pointer-events-none">
+                <motion.div
+                  className={`absolute inset-0 flex items-center justify-center transform-gpu-3d ${
+                    isRevealed ? "gate-glow-top" : ""
+                  }`}
+                  style={{
+                    clipPath: "inset(0 0 49.5% 0)",
+                    transformOrigin: "top",
+                    transformStyle: "preserve-3d",
+                    backfaceVisibility: "visible"
+                  }}
+                  animate={{
+                    rotateX: isRevealed ? 88 : 0,
+                    opacity: isRevealed ? 0.4 : 1
+                  }}
+                  transition={{ type: "spring", stiffness: 80, damping: 15 }}
+                >
+                  <h1 className={`text-balance text-5xl font-extrabold tracking-tight sm:text-7xl text-center px-4 transition-colors duration-500 ${
+                    isRevealed ? "text-text-secondary" : "text-text-primary"
+                  }`}>
+                    "Good code is wasted if nobody can figure out how to use it."
+                  </h1>
+                </motion.div>
+
+                <motion.div
+                  className={`absolute inset-0 flex items-center justify-center overflow-hidden transform-gpu-3d ${
+                    isRevealed ? "gate-glow-bottom" : ""
+                  }`}
+                  style={{
+                    clipPath: "inset(49.5% 0 0 0)",
+                    transformOrigin: "bottom",
+                    transformStyle: "preserve-3d",
+                    backfaceVisibility: "visible"
+                  }}
+                  animate={{
+                    rotateX: isRevealed ? -88 : 0,
+                    opacity: isRevealed ? 0.4 : 1
+                  }}
+                  transition={{ type: "spring", stiffness: 80, damping: 15 }}
+                >
+                  <h1 className={`text-balance text-5xl font-extrabold tracking-tight sm:text-7xl text-center px-4 transition-colors duration-500 ${
+                    isRevealed ? "text-text-secondary" : "text-text-primary"
+                  }`}>
+                    "Good code is wasted if nobody can figure out how to use it."
+                  </h1>
+                </motion.div>
+              </div>
+
+              {/* Physical Switch - attached to top gate, OUTSIDE pointer-events-none container */}
+              <motion.div
+                className="absolute top-0 left-4 h-1/2 flex items-end justify-start z-30"
+                style={{
+                  perspective: "1200px",
+                  transformOrigin: "top",
+                  transformStyle: "preserve-3d"
+                }}
+                animate={{
+                  rotateX: isRevealed ? 88 : 0
+                }}
+                transition={{ type: "spring", stiffness: 80, damping: 15 }}
+              >
+                <motion.button
+                  className="px-4 py-1.5 font-mono text-xs text-indigo-400 bg-black/80 border border-indigo-500/40 rounded-b transition-colors duration-200 hover:text-pink-500 hover:border-pink-500/50 hover:shadow-[0_0_15px_rgba(244,114,182,0.3)]"
+                  style={{
+                    transformOrigin: "top",
+                    transformStyle: "preserve-3d",
+                    pointerEvents: isRevealed ? "auto" : "none"
+                  }}
+                  animate={{
+                    rotateX: isRevealed ? -88 : -90,
+                    opacity: isRevealed ? 1 : 0
+                  }}
+                  transition={{ type: "spring", stiffness: 80, damping: 15, delay: 0.1 }}
+                  onClick={() => {
+                    setIsRevealed(false);
+                    setActiveNode(null);
+                  }}
+                >
+                  [ CLOSE_QUOTE ]
+                </motion.button>
+              </motion.div>
+
+              {/* Layer 3: Vector Cursor Lines (z-30) - uses spring-smoothed coordinates */}
+              {!isRevealed && corners.length > 0 && (
+                <svg
+                  className="absolute inset-0 z-30 w-full h-full pointer-events-none transition-opacity duration-300"
+                  style={{ opacity: isQuoteHovered ? 1 : 0 }}
+                >
+                  <defs>
+                    <linearGradient id="vectorGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" stopColor="#818cf8" stopOpacity="0.5" />
+                      <stop offset="100%" stopColor="#f472b6" stopOpacity="0.5" />
+                    </linearGradient>
+                  </defs>
+                  {corners.map((corner, i) => (
+                    <motion.line
+                      key={i}
+                      x1={smoothX}
+                      y1={smoothY}
+                      x2={corner.x}
+                      y2={corner.y}
+                      stroke="url(#vectorGradient)"
+                      strokeWidth={1}
+                      className="animate-vector-line"
+                    />
+                  ))}
+                </svg>
+              )}
+
+              {/* Layer 4: Click trigger (z-40) - cursor: none for ghost cursor effect */}
+              {!isRevealed && (
+                <div
+                  className="absolute inset-0 z-40"
+                  style={{ cursor: "none" }}
+                  onClick={() => setIsRevealed(true)}
+                />
+              )}
+
+                          </div>
+
+            {/* Attribution - OUTSIDE quoteContainerRef, slides down and fades */}
+            <motion.p
+              className="mx-auto mt-5 max-w-2xl text-pretty text-base text-text-secondary sm:text-lg text-center"
+              animate={{
+                opacity: isRevealed ? 0 : 1,
+                y: isRevealed ? 30 : 0
+              }}
+              transition={{ type: "spring", stiffness: 150, damping: 25 }}
+            >
+              ~Ghandi (Probably)
+            </motion.p>
+
+            {/* CTA Buttons */}
+            <motion.div
+              className="mt-8 flex items-center justify-center gap-3"
+              animate={{
+                opacity: isRevealed ? 0 : 1,
+                y: isRevealed ? 20 : 0
+              }}
+              transition={{ type: "spring", stiffness: 150, damping: 25 }}
+            >
+              <Link to="/projects" className="btn-secondary">
                 See Projects
               </Link>
-              <a
-                href="#contact"
-                className="inline-flex items-center rounded-2xl border border-white/10 px-5 py-3 font-semibold text-white transition hover:bg-white/5"
-              >
+              <a href="#contact" className="btn-tertiary">
                 Get in touch
               </a>
-            </div>
+            </motion.div>
 
-            {/* Stats */}
+            {/* Stats - always visible */}
             <div className="mx-auto mt-10 grid max-w-4xl grid-cols-2 gap-3 md:grid-cols-4">
               {[
-                { k: "MComp(hons) CS & AI",   v: "University of Bath" },
-                { k: "Blues Award",     v: "Lacrosse 1st Team Captain"},
+                { k: "MComp(hons) CS & AI", v: "University of Bath" },
+                { k: "Blues Award", v: "Lacrosse 1st Team Captain" },
                 { k: "IMC Prosperity Challenge", v: "Top 10% Globally" },
-                { k: "Bath Hackathon",         v: "Tech for Good Winner" },
+                { k: "Bath Hackathon", v: "Tech for Good Winner" },
               ].map((s) => (
-                <div
-                  key={s.k}
-                  className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 backdrop-blur"
-                >
-                  <dt className="text-sm text-zinc-300">{s.k}</dt>
-                  <dd className="text-2xl font-extrabold text-white">{s.v}</dd>
+                <div key={s.k} className="card px-4 py-4 backdrop-blur">
+                  <dt className="text-sm text-text-secondary">{s.k}</dt>
+                  <dd className="text-2xl font-extrabold text-text-primary">{s.v}</dd>
                 </div>
               ))}
             </div>
           </motion.div>
-        </section>
-
-        {/* About (existing) */}
-        <section id="about" className="relative mx-auto max-w-3xl px-4 py-12 sm:px-6">
-          <motion.div
-            variants={fadeUp}
-            initial="hidden"
-            whileInView="show"
-            viewport={{ once: true, margin: "-80px" }}
-            className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-xl sm:p-8 backdrop-blur"
-          >
-            <h2 className="text-2xl font-bold sm:text-3xl">About me</h2>
-            <div className="mt-3 space-y-3 text-zinc-300">
-              <p>Something Cool</p>
-              <p>Will Be Coming</p>
-              <ul className="grid list-disc gap-1 pl-5">
-                <li>Here</li>
-                <li>Very</li>
-                <li>Soon</li>
-              </ul>
-            </div>
-          </motion.div>
-        </section>
-
-        {/* NEW: About — Academics (images left, text offset right) */}
-        <section id="about-academics" className="relative mx-auto max-w-7xl px-4 py-12 sm:px-6">
-          <div className="grid grid-cols-1 items-center gap-8 lg:grid-cols-12">
-            {/* Image stack (left) */}
-            <motion.div
-              variants={fadeUp}
-              initial="hidden"
-              whileInView="show"
-              viewport={{ once: true, margin: "-80px" }}
-              className="order-2 flex flex-col gap-4 lg:order-1 lg:col-span-5"
-            >
-              <div
-                className="relative overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-1 ring-1 ring-white/10"
-                style={{ aspectRatio: '3 / 4' }} 
-              >
-                <img
-                  src="/images/academics-1.jpg"
-                  alt="Academic presentation or research poster"
-                  className="absolute inset-0 h-full w-full rounded-xl object-cover"
-                />
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-1 ring-1 ring-white/10">
-                <img
-                  src="/images/academics-2.jpg"
-                  alt="Coding or lab work"
-                  className="h-56 w-full rounded-xl object-cover sm:h-64 md:h-72"
-                />
-              </div>
-            </motion.div>
-
-            {/* Text (right, offset) */}
-            <motion.div
-              variants={fadeUp}
-              initial="hidden"
-              whileInView="show"
-              viewport={{ once: true, margin: "-80px" }}
-              className="order-1 lg:order-2 lg:col-span-7 lg:pl-10"
-            >
-              <div className="rounded-3xl border border-white/10 bg-white/5 p-6 sm:p-8 backdrop-blur">
-                <h2 className="text-2xl font-bold sm:text-3xl">Academic Stuff</h2>
-                {/* TODO: Replace with your own academic summary and bullets */}
-                <p className="mt-2 text-zinc-300">
-                  I’m a recent MComp (Hons) in Computer Science & AI gradute from the University of Bath.
-                  I build reliable ML systems, end-to-end clean APIs, reproducible training/eval,
-                  and fast inference focused on real-world control and perception from simulation to deployment.
-                  I care about robust policies, good datasets, and evaluators that reflect actual use.
-                </p>
-                <ul className="mt-4 grid list-disc gap-2 pl-5 text-zinc-300">
-                  <li>Using Proximal Policy Optimization with Adversarial Motion Priors to Aid
-                      Rehabilitation</li>
-                  <li>Reinforcement Learning with Adversarial Motion Priors for Surface EMG-Driven Prosthetic Control</li>
-                  <li>Obstruction Detection AI for Train Platforms</li>
-                  <li>LSTM Based Stock Predictor</li>
-                  <li>Constraint Propagration based Sudoku Solving AI</li>
-                  <li>Object Detection Lacrosse Stick and Athlete Traking System</li>
-                </ul>
-              </div>
-            </motion.div>
-          </div>
-        </section>
-
-        {/* NEW: About — Extra‑Curriculars (text left, images right) */}
-        <section id="about-extracurriculars" className="relative mx-auto max-w-7xl px-4 py-12 sm:px-6">
-          <div className="grid grid-cols-1 items-center gap-8 lg:grid-cols-12">
-            {/* Text (left, offset) */}
-            <motion.div
-              variants={fadeUp}
-              initial="hidden"
-              whileInView="show"
-              viewport={{ once: true, margin: "-80px" }}
-              className="order-1 lg:col-span-7 lg:pr-10"
-            >
-              <div className="rounded-3xl border border-white/10 bg-white/5 p-6 sm:p-8 backdrop-blur">
-                <h2 className="text-2xl font-bold sm:text-3xl">Extra‑Curriculars</h2>
-                {/* TODO: Replace with your own extra‑curricular summary and bullets */}
-                <p className="mt-2 text-zinc-300">
-                  Outside work I’m usually on a lacrosse pitch, out with friends, or building something random.
-                  I’ve captained Bath’s 1st Team, represented English Universities twice, earned a Blues Award,
-                  and won golf and chess tournaments.
-                </p>
-                <ul className="mt-4 grid list-disc gap-2 pl-5 text-zinc-300">
-                  <li>Bath Lacrosse 1st Team Captain; set training standards and team culture</li>
-                  <li>Bath Lacrosse Social Secretary; organized events and community meet-ups</li>
-                  <li>2 Time English Universities Representative</li>
-                  <li>Low Single Digit Golfer</li>
-                  <li>Part Time Self Proclaimed Chef</li>
-                  <li>2256 Peak Chess ELO</li>
-                </ul>
-              </div>
-            </motion.div>
-
-            {/* Image stack (right) */}
-            <motion.div
-              variants={fadeUp}
-              initial="hidden"
-              whileInView="show"
-              viewport={{ once: true, margin: "-80px" }}
-              className="order-2 flex flex-col gap-4 lg:col-span-5"
-            >
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-1 ring-1 ring-white/10">
-                <img
-                  src="/images/extras-1.jpg"
-                  alt="On‑field action shot"
-                  className="h-56 w-full rounded-xl object-cover sm:h-64 md:h-72"
-                />
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-1 ring-1 ring-white/10">
-                <img
-                  src="/images/extras-2.jpg"
-                  alt="Team or community event"
-                  className="h-56 w-full rounded-xl object-cover sm:h-64 md:h-72"
-                />
-              </div>
-            </motion.div>
-          </div>
-        </section>
-
-        {/* Values */}
-        <section id="values" className="relative mx-auto max-w-7xl px-4 py-12 sm:px-6">
-          <div className="flex items-end justify-between gap-4">
-            <h2 className="text-2xl font-bold sm:text-3xl">What I care about</h2>
-            <p className="max-w-xl text-zinc-300">Small details that feel good, big things that just work.</p>
-          </div>
-          <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {[
-              { title: "Team-first leadership", body: "Captain Mindset: Standards, Accountability, and Support.", icon: "⚡" },
-              { title: "Boring is beautiful", body: "Logs, docs, and alerts so future-me says thanks.", icon: "🛠️" },
-              { title: "Curiosity with discipline", body: "Prototype fast; benchmark and reproduce before scaling.", icon: "🧪" },
-            ].map((c) => (
-              <motion.div
-                key={c.title}
-                variants={fadeUp}
-                initial="hidden"
-                whileInView="show"
-                viewport={{ once: true, margin: "-80px" }}
-                className="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur"
-              >
-                <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-400/30 to-pink-400/30 text-lg">
-                  {c.icon}
-                </div>
-                <h3 className="font-semibold">{c.title}</h3>
-                <p className="mt-1 text-sm text-zinc-300">{c.body}</p>
-              </motion.div>
-            ))}
-          </div>
         </section>
 
         {/* Contact / CTA */}
@@ -280,18 +392,17 @@ export default function LandingPage() {
             initial="hidden"
             whileInView="show"
             viewport={{ once: true, margin: "-80px" }}
-            className="rounded-3xl border border-white/10 bg-gradient-to-br from-indigo-400 to-pink-400 p-6 text-[#0b0c10] shadow-2xl sm:p-10"
+            className="rounded-3xl border border-border-subtle bg-gradient-to-br from-indigo-400 to-pink-400 p-6 text-bg-base shadow-2xl sm:p-10"
           >
-            <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
-              <div>
-                <h2 className="text-2xl font-extrabold sm:text-3xl">Let’s talk</h2>
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="text-center lg:text-left">
+                <h2 className="text-2xl font-extrabold sm:text-3xl">Let's talk</h2>
                 <p className="mt-1 opacity-80">Open to SWE/ML roles. Happy to have a conversation about my projects or anything else.</p>
               </div>
-              <div className="flex gap-3">
-                <a href="mailto:jamal@alakhras.net" className="inline-flex rounded-2xl bg-[#0b0c10] px-5 py-3 font-semibold text-white ring-1 ring-black/10">Email me</a>
-                <a href="https://github.com/Jamal-Akhras" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-2xl border border-[#0b0c10]/20 bg-white/90 px-5 py-3 font-semibold">GitHub</a>
-                <a href="https://linkedin.com/in/jamal-akhras-43120b358" className="inline-flex items-center gap-2 rounded-2xl bg-[#0A66C2] px-5 py-3 font-semibold text-white ring-1 ring-[#0A66C2]/30 hover:bg-[#004182] hover:ring-[#004182]/40 focus:outline-none focus:ring-2 focus:ring-[#0A66C2]/60 focus:ring-offset-2 focus:ring-offset-[#0b0c10] active:scale-[0.98] transition">LinkedIn</a>
-                
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-center sm:gap-3">
+                <a href="mailto:jamal@alakhras.net" className="inline-flex justify-center rounded-2xl bg-bg-base px-5 py-3 font-semibold text-white ring-1 ring-black/10 transition hover:bg-bg-base/90">Email me</a>
+                <a href="https://github.com/Jamal-Akhras" target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#24292e] px-5 py-3 font-semibold text-white ring-1 ring-black/10 transition hover:bg-[#2f363d]">GitHub</a>
+                <a href="https://linkedin.com/in/jamal-akhras-43120b358" className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#0A66C2] px-5 py-3 font-semibold text-white ring-1 ring-[#0A66C2]/30 hover:bg-[#004182] transition">LinkedIn</a>
               </div>
             </div>
           </motion.div>
@@ -299,8 +410,8 @@ export default function LandingPage() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-white/10/50">
-        <div className="mx-auto max-w-7xl px-4 py-8 text-center text-zinc-400 sm:px-6 lg:px-8">
+      <footer className="border-t border-border-subtle">
+        <div className="mx-auto max-w-7xl px-4 py-8 text-center text-text-muted sm:px-6 lg:px-8">
           © {new Date().getFullYear()} Jamal Akhras — Built with React & Tailwind
         </div>
       </footer>
