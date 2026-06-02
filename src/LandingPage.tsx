@@ -13,7 +13,7 @@ import { useTheme } from "./hooks/useTheme";
 import { useMousePosition } from "./hooks/useMousePosition";
 
 // Constants
-import { fadeUp, fade, EASE } from "./constants/animations";
+import { fadeUp, fade } from "./constants/animations";
 import { NAV_LINKS, type ActiveNode } from "./constants/terminalContent";
 
 export default function LandingPage() {
