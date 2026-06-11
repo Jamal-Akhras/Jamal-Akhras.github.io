@@ -1,5 +1,5 @@
 // src/ai-racer/AIRacerPage.tsx
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import DecorativeBg from '../components/DecorativeBg';
 import TrackEditor from './track-editor/TrackEditor';
@@ -16,10 +16,99 @@ export default function AIRacerPage() {
     setTrack(newTrack);
   };
 
+  // Fullscreen: the stage wrapper goes fullscreen and the fixed-size game box is
+  // CSS-scaled to fit (preserving aspect ratio, letterboxed).
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [scale, setScale] = useState(1);
+
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(document.fullscreenElement === stageRef.current);
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
+
+  useEffect(() => {
+    if (!isFullscreen) {
+      setScale(1);
+      return;
+    }
+    const update = () =>
+      setScale(Math.min(
+        window.innerWidth / GAME_CONSTANTS.CANVAS_WIDTH,
+        window.innerHeight / GAME_CONSTANTS.CANVAS_HEIGHT,
+      ));
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, [isFullscreen]);
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      stageRef.current?.requestFullscreen();
+    }
+  };
+
   const btn = (active: boolean, disabled = false) =>
     `inline-flex items-center rounded-2xl px-4 py-2 whitespace-nowrap ring-1 ring-white/10 transition
      ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
      ${active ? 'bg-white/10 text-white' : 'bg-white/5 text-zinc-200 hover:bg-white/10'}`;
+
+  // Reusable controls so they can appear both in the page layout and as a
+  // fullscreen overlay.
+  const modeSwitcher = (
+    <>
+      <button className={btn(mode === 'draw')} onClick={() => setMode('draw')} aria-pressed={mode === 'draw'}>
+        Draw Track
+      </button>
+      <button
+        className={btn(mode === 'watch-ai-learn', !track)}
+        onClick={() => track && setMode('watch-ai-learn')}
+        disabled={!track}
+        aria-pressed={mode === 'watch-ai-learn'}
+      >
+        Watch AI Learn
+      </button>
+      <button
+        className={btn(mode === 'time-trial', !track)}
+        onClick={() => track && setMode('time-trial')}
+        disabled={!track}
+        aria-pressed={mode === 'time-trial'}
+      >
+        Time Trial
+      </button>
+      <button
+        className={btn(mode === 'live-race', !track)}
+        onClick={() => track && setMode('live-race')}
+        disabled={!track}
+        aria-pressed={mode === 'live-race'}
+      >
+        Live Race
+      </button>
+    </>
+  );
+
+  const showPopulation = mode === 'draw' || mode === 'watch-ai-learn';
+  const populationControl = (
+    <div className="flex items-center gap-4">
+      <label className="text-sm text-zinc-300">
+        AI Population: <span className="font-mono text-white">{populationSize}</span>
+      </label>
+      <input
+        type="range"
+        min={5}
+        max={100}
+        value={populationSize}
+        onChange={(e) => setPopulationSize(Number(e.target.value))}
+        className="w-40"
+      />
+      <span className="hidden text-xs text-zinc-500 sm:inline">
+        (fewer = faster, more = better learning)
+      </span>
+    </div>
+  );
 
   return (
     <div className="relative min-h-screen">
@@ -55,66 +144,28 @@ export default function AIRacerPage() {
 
         {/* Mode switcher */}
         <div className="mb-4 flex flex-wrap items-center gap-3">
-          <button
-            className={btn(mode === 'draw')}
-            onClick={() => setMode('draw')}
-            aria-pressed={mode === 'draw'}
-          >
-            Draw Track
-          </button>
-
-          <button
-            className={btn(mode === 'watch-ai-learn', !track)}
-            onClick={() => track && setMode('watch-ai-learn')}
-            disabled={!track}
-            aria-pressed={mode === 'watch-ai-learn'}
-          >
-            Watch AI Learn
-          </button>
-
-          <button
-            className={btn(mode === 'time-trial', !track)}
-            onClick={() => track && setMode('time-trial')}
-            disabled={!track}
-            aria-pressed={mode === 'time-trial'}
-          >
-            Time Trial
-          </button>
-
-          <button
-            className={btn(mode === 'live-race', !track)}
-            onClick={() => track && setMode('live-race')}
-            disabled={!track}
-            aria-pressed={mode === 'live-race'}
-          >
-            Live Race
+          {modeSwitcher}
+          <button className={`${btn(false)} ml-auto`} onClick={toggleFullscreen}>
+            Fullscreen
           </button>
         </div>
 
         {/* Population size control */}
-        {mode === 'draw' && (
-          <div className="mb-4 flex items-center gap-4">
-            <label className="text-sm text-zinc-300">
-              AI Population: <span className="font-mono text-white">{populationSize}</span>
-            </label>
-            <input
-              type="range"
-              min={5}
-              max={100}
-              value={populationSize}
-              onChange={(e) => setPopulationSize(Number(e.target.value))}
-              className="w-40"
-            />
-            <span className="text-xs text-zinc-500">
-              (fewer = faster, more = better learning)
-            </span>
-          </div>
-        )}
+        {showPopulation && <div className="mb-4">{populationControl}</div>}
 
         {/* Mode content */}
         <div
+          ref={stageRef}
+          className={isFullscreen ? 'fixed inset-0 z-[60] flex items-center justify-center bg-black' : ''}
+        >
+        <div
           className="rounded-2xl border border-white/10 bg-black/30 overflow-hidden"
-          style={{ width: GAME_CONSTANTS.CANVAS_WIDTH, height: GAME_CONSTANTS.CANVAS_HEIGHT }}
+          style={{
+            width: GAME_CONSTANTS.CANVAS_WIDTH,
+            height: GAME_CONSTANTS.CANVAS_HEIGHT,
+            transform: isFullscreen ? `scale(${scale})` : undefined,
+            transformOrigin: 'center center',
+          }}
         >
           {mode === 'draw' && (
             <TrackEditor
@@ -156,6 +207,18 @@ export default function AIRacerPage() {
               populationSize={2}
             />
           )}
+        </div>
+        {isFullscreen && (
+          <div className="absolute left-1/2 top-4 z-[61] flex max-w-[95vw] -translate-x-1/2 flex-col items-center gap-2 rounded-2xl bg-black/70 px-4 py-3 backdrop-blur">
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              {modeSwitcher}
+              <button className={btn(false)} onClick={toggleFullscreen}>
+                Exit Fullscreen
+              </button>
+            </div>
+            {showPopulation && populationControl}
+          </div>
+        )}
         </div>
 
         {/* Instructions */}
