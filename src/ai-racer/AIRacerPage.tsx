@@ -4,13 +4,20 @@ import { Link } from 'react-router-dom';
 import DecorativeBg from '../components/DecorativeBg';
 import TrackEditor from './track-editor/TrackEditor';
 import RacingGame from './RacingGame';
-import type { Track, GameMode } from './core/types';
-import { GAME_CONSTANTS } from './core/types';
+import type { Track, GameMode, AIConfig } from './core/types';
+import { GAME_CONSTANTS, DEFAULT_AI_CONFIG } from './core/types';
 
 export default function AIRacerPage() {
   const [mode, setMode] = useState<GameMode>('draw');
   const [track, setTrack] = useState<Track | null>(null);
   const [populationSize, setPopulationSize] = useState(20);
+
+  // "The Nerdy Stuff" — AI/training configuration.
+  const [aiConfig, setAiConfig] = useState<AIConfig>(DEFAULT_AI_CONFIG);
+  const [showNerdy, setShowNerdy] = useState(false);
+  const [restartKey, setRestartKey] = useState(0); // bump to remount the sim (apply structural params)
+  const setCfg = <K extends keyof AIConfig>(key: K, value: AIConfig[K]) =>
+    setAiConfig((c) => ({ ...c, [key]: value }));
 
   const handleTrackComplete = (newTrack: Track) => {
     setTrack(newTrack);
@@ -110,6 +117,68 @@ export default function AIRacerPage() {
     </div>
   );
 
+  // A labelled slider bound to one AIConfig field.
+  const cfgSlider = (
+    label: string,
+    key: keyof AIConfig,
+    min: number,
+    max: number,
+    step: number,
+    suffix = '',
+  ) => {
+    const v = aiConfig[key];
+    return (
+      <label className="flex flex-col gap-1 text-xs text-zinc-300">
+        <span>
+          {label}: <span className="font-mono text-white">{Number.isInteger(v) ? v : v.toFixed(2)}{suffix}</span>
+        </span>
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={v}
+          onChange={(e) => setCfg(key, Number(e.target.value))}
+          className="w-full accent-indigo-400"
+        />
+      </label>
+    );
+  };
+
+  const nerdyPanel = (
+    <div className="mt-3 w-full max-w-2xl rounded-2xl border border-white/10 bg-black/40 p-4 backdrop-blur">
+      <div className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-3">
+        {cfgSlider('Sim speed', 'simSpeed', 1, 10, 1, '×')}
+        {cfgSlider('Generation length', 'maxGenerationTime', 5, 60, 1, 's')}
+        {cfgSlider('Stall timeout', 'checkpointTimeout', 1, 10, 0.5, 's')}
+        {cfgSlider('Hidden neurons', 'hiddenSize', 2, 24, 1)}
+        {cfgSlider('Mutation rate', 'mutationRate', 0, 1, 0.05)}
+        {cfgSlider('Elitism', 'elitism', 0, 0.5, 0.05)}
+      </div>
+      <div className="mt-3 flex items-center gap-3 border-t border-white/10 pt-3">
+        <button
+          className="rounded-xl bg-indigo-500/80 px-3 py-1.5 text-sm text-white hover:bg-indigo-500"
+          onClick={() => setRestartKey((k) => k + 1)}
+        >
+          Restart training
+        </button>
+        <span className="text-xs text-zinc-500">
+          Sim speed, generation length and stall timeout apply live; hidden neurons,
+          mutation and elitism take effect on restart.
+        </span>
+      </div>
+    </div>
+  );
+
+  const nerdyControls = (
+    <div className="flex flex-col items-start">
+      <button className={btn(showNerdy)} onClick={() => setShowNerdy((s) => !s)} aria-expanded={showNerdy}>
+        The Nerdy Stuff {showNerdy ? '▲' : '▼'}
+      </button>
+      {showNerdy && nerdyPanel}
+    </div>
+  );
+
   return (
     <div className="relative min-h-screen">
       <DecorativeBg />
@@ -153,6 +222,9 @@ export default function AIRacerPage() {
         {/* Population size control */}
         {showPopulation && <div className="mb-4">{populationControl}</div>}
 
+        {/* The Nerdy Stuff */}
+        <div className="mb-4">{nerdyControls}</div>
+
         {/* Mode content */}
         <div
           ref={stageRef}
@@ -177,12 +249,13 @@ export default function AIRacerPage() {
 
           {mode === 'watch-ai-learn' && track && (
             <RacingGame
-              key={`watch-ai-learn-${populationSize}`}
+              key={`watch-ai-learn-${populationSize}-${restartKey}`}
               track={track}
               mode={mode}
               width={GAME_CONSTANTS.CANVAS_WIDTH}
               height={GAME_CONSTANTS.CANVAS_HEIGHT}
               populationSize={populationSize}
+              aiConfig={aiConfig}
             />
           )}
 
@@ -217,6 +290,7 @@ export default function AIRacerPage() {
               </button>
             </div>
             {showPopulation && populationControl}
+            {nerdyControls}
           </div>
         )}
         </div>
