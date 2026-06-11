@@ -68,17 +68,19 @@ export default function Projects() {
             </div>
           </Link>
 
-          {/* Card: AI Racer (Coming Soon) */}
-          <div className="card p-5 opacity-50 cursor-not-allowed select-none">
-            <div className="flex items-center gap-2">
-              <h3 className="font-semibold">AI Racer</h3>
-              <span className="rounded-full bg-accent-primary/20 px-2 py-0.5 text-xs text-accent-primary">Coming Soon</span>
-            </div>
-            <p className="mt-1 text-sm text-text-muted">Design a Course and Watch a Car Learn The Optimal Path</p>
+          {/* Card: AI Racer */}
+          <Link
+            to="/ai-racer"
+            className="card card-interactive p-5 block group"
+          >
+            <h3 className="font-semibold">AI Racer</h3>
+            <p className="mt-1 text-sm text-text-secondary">Design a Course and Watch a Car Learn The Optimal Path</p>
             <div className="mt-4">
-              <span className="rounded-xl border border-border-subtle px-4 py-2 text-text-muted text-sm">In Development</span>
+              <span className="btn-tertiary text-sm px-4 py-2 group-hover:border-accent-primary group-hover:text-accent-primary transition-colors">
+                Play now
+              </span>
             </div>
-          </div>
+          </Link>
 
           {/* Add more cards later */}
         </div>
