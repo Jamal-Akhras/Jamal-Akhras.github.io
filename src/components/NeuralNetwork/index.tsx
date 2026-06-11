@@ -27,7 +27,7 @@ const PROCESSING_NODES = [
 
 const OUTPUT_NODES = [
   { id: "dino", label: "Steve", subtitle: "Dino Game", y: 108, path: "/dino-game" },
-  { id: "racer", label: "AI Racer", subtitle: "Projects", y: 186, path: "/projects" },
+  { id: "racer", label: "AI Racer", subtitle: "Racing Game", y: 186, path: "/ai-racer" },
 ];
 
 // Node positions (x-coordinates)
