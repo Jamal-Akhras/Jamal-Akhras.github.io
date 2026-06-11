@@ -6,6 +6,39 @@ import type { Track, RacingAction, GameMode } from './core/types';
 import { GAME_CONSTANTS } from './core/types';
 import { Car } from './core/Car';
 import { NEATController } from './ai/NEATController';
+import { TrackCollision } from './core/TrackCollision';
+import { drawGrass, drawTrackSurface } from './core/trackRender';
+
+// Driving keys whose default browser action (page scroll) we suppress.
+const DRIVE_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ']);
+
+// Draw a top-down car. Local frame: +x = forward (length), +y = right (width).
+function drawCar(g: PixiGraphics, cx: number, cy: number, angle: number, color: number, alpha = 1): void {
+  const L = GAME_CONSTANTS.CAR_LENGTH / 2;
+  const W = GAME_CONSTANTS.CAR_WIDTH / 2;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const tx = (lx: number, ly: number): [number, number] => [cx + lx * cos - ly * sin, cy + lx * sin + ly * cos];
+  const path = (pts: [number, number][]) => pts.flatMap(([lx, ly]) => tx(lx, ly));
+
+  // Body with a tapered nose so heading is obvious
+  const hull: [number, number][] = [
+    [L, 0], [L * 0.55, W], [-L, W * 0.85], [-L, -W * 0.85], [L * 0.55, -W],
+  ];
+  g.poly(path(hull), true).fill({ color, alpha }).stroke({ width: 1, color: 0x000000, alpha: 0.4 * alpha });
+
+  // Windshield / cabin
+  const cabin: [number, number][] = [
+    [L * 0.25, W * 0.55], [-L * 0.35, W * 0.6], [-L * 0.35, -W * 0.6], [L * 0.25, -W * 0.55],
+  ];
+  g.poly(path(cabin), true).fill({ color: 0x0b1220, alpha: 0.55 * alpha });
+
+  // Headlights
+  for (const side of [1, -1]) {
+    const [hx, hy] = tx(L * 0.82, side * W * 0.5);
+    g.circle(hx, hy, 1.6).fill({ color: 0xfff4c2, alpha });
+  }
+}
 
 interface RacingGameProps {
   track: Track;
@@ -27,11 +60,12 @@ export default function RacingGame({
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const appRef = useRef<Application | null>(null);
-  const graphicsRef = useRef<PixiGraphics | null>(null);
+  const trackGraphicsRef = useRef<PixiGraphics | null>(null); // static track layer (drawn once)
+  const carsGraphicsRef = useRef<PixiGraphics | null>(null); // dynamic cars layer (redrawn each frame)
 
-  // Matter.js refs
+  // Matter.js + collision refs
   const engineRef = useRef<Matter.Engine | null>(null);
-  const wallBodiesRef = useRef<Matter.Body[]>([]);
+  const collisionRef = useRef<TrackCollision | null>(null);
 
   // Game state refs
   const carsRef = useRef<Car[]>([]);
@@ -52,52 +86,6 @@ export default function RacingGame({
   const [generation, setGeneration] = useState(0);
   const [aliveCars, setAliveCars] = useState(0);
   const [bestFitness, setBestFitness] = useState(0);
-
-  // Create wall bodies from track boundaries
-  const createWallBodies = useCallback((track: Track): Matter.Body[] => {
-    const walls: Matter.Body[] = [];
-    const wallThickness = 10;
-
-    // Create walls from left boundary
-    for (let i = 0; i < track.leftBoundary.length - 1; i++) {
-      const p1 = track.leftBoundary[i];
-      const p2 = track.leftBoundary[i + 1];
-      const wall = createWallSegment(p1.x, p1.y, p2.x, p2.y, wallThickness);
-      walls.push(wall);
-    }
-
-    // Create walls from right boundary
-    for (let i = 0; i < track.rightBoundary.length - 1; i++) {
-      const p1 = track.rightBoundary[i];
-      const p2 = track.rightBoundary[i + 1];
-      const wall = createWallSegment(p1.x, p1.y, p2.x, p2.y, wallThickness);
-      walls.push(wall);
-    }
-
-    return walls;
-  }, []);
-
-  // Create a single wall segment
-  const createWallSegment = (
-    x1: number, y1: number,
-    x2: number, y2: number,
-    thickness: number
-  ): Matter.Body => {
-    const cx = (x1 + x2) / 2;
-    const cy = (y1 + y2) / 2;
-    const length = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
-    const angle = Math.atan2(y2 - y1, x2 - x1);
-
-    return Matter.Bodies.rectangle(cx, cy, length, thickness, {
-      isStatic: true,
-      angle,
-      label: 'wall',
-      collisionFilter: {
-        category: 0x0001,
-        mask: 0x0002,
-      },
-    });
-  };
 
   // Initialize cars
   const initializeCars = useCallback((count: number) => {
@@ -200,7 +188,7 @@ export default function RacingGame({
 
         car.applyAction(action);
         car.update(cappedDt);
-        car.updateSensors(wallBodiesRef.current);
+        if (collisionRef.current) car.updateSensors(collisionRef.current);
         car.updateCheckpoint(track);
       }
 
@@ -208,24 +196,25 @@ export default function RacingGame({
       const physicsDt = Math.min(cappedDt * 1000, 16.667);
       Matter.Engine.update(engineRef.current, physicsDt);
 
-      // Check if cars are off-track (distance from centerline)
-      for (const car of carsRef.current) {
-        if (!car.state.alive) continue;
-
-        const carX = car.body.position.x;
-        const carY = car.body.position.y;
-
-        // Find minimum distance to any point on centerline
-        let minDistSquared = Infinity;
-        for (const point of track.centerLine) {
-          const distSquared = (carX - point.x) ** 2 + (carY - point.y) ** 2;
-          if (distSquared < minDistSquared) minDistSquared = distSquared;
-        }
-
-        // Kill car if too far from track (track width / 2 + small margin)
-        const maxDistFromCenter = (track.width / 2) + 10;
-        if (minDistSquared > maxDistFromCenter ** 2) {
-          car.kill();
+      // Track limits (F1-style): a car is out if 3+ of its 4 wheels are off the road.
+      const collision = collisionRef.current;
+      if (collision) {
+        const L = (GAME_CONSTANTS.CAR_LENGTH / 2) * 0.7; // wheel inset from nose/tail
+        const W = GAME_CONSTANTS.CAR_WIDTH / 2;
+        const wheels: [number, number][] = [[L, W], [L, -W], [-L, W], [-L, -W]];
+        for (const car of carsRef.current) {
+          if (!car.state.alive) continue;
+          const cx = car.body.position.x;
+          const cy = car.body.position.y;
+          const cos = Math.cos(car.body.angle);
+          const sin = Math.sin(car.body.angle);
+          let wheelsOff = 0;
+          for (const [lx, ly] of wheels) {
+            const wx = cx + lx * cos - ly * sin;
+            const wy = cy + lx * sin + ly * cos;
+            if (!collision.isOnTrack(wx, wy)) wheelsOff++;
+          }
+          if (wheelsOff >= 3) car.kill();
         }
       }
     }
@@ -265,75 +254,29 @@ export default function RacingGame({
     rafRef.current = requestAnimationFrame(gameLoop);
   }, [mode, track, getPlayerAction, getRandomAction, resetCars, onGenerationComplete]);
 
-  // Render function
+  // Render only the cars each frame; the track is drawn once into its own layer.
   const render = useCallback(() => {
-    const g = graphicsRef.current;
+    const g = carsGraphicsRef.current;
     if (!g) return;
 
     g.clear();
 
-    // Draw grass background
-    g.rect(0, 0, width, height).fill(GAME_CONSTANTS.TRACK_GRASS_COLOR);
-
-    // Draw track road as a thick stroke along centerline
-    if (track.centerLine.length > 1) {
-      const roadPath = track.centerLine.flatMap(p => [p.x, p.y]);
-      g.poly(roadPath, false).stroke({
-        width: track.width,
-        color: GAME_CONSTANTS.TRACK_ROAD_COLOR,
-        cap: 'round',
-        join: 'round'
-      });
+    // Draw dead cars first (faded) so live cars render on top
+    for (const car of carsRef.current) {
+      if (car.state.alive) continue;
+      drawCar(g, car.body.position.x, car.body.position.y, car.body.angle, 0x333333, 0.3);
     }
 
-    // Draw track borders
-    if (track.leftBoundary.length > 1) {
-      const leftPath = track.leftBoundary.flatMap(p => [p.x, p.y]);
-      g.poly(leftPath, false).stroke({ width: 3, color: GAME_CONSTANTS.TRACK_BORDER_COLOR });
-    }
-
-    if (track.rightBoundary.length > 1) {
-      const rightPath = track.rightBoundary.flatMap(p => [p.x, p.y]);
-      g.poly(rightPath, false).stroke({ width: 3, color: GAME_CONSTANTS.TRACK_BORDER_COLOR });
-    }
-
-    // Draw start/finish line
-    g.poly([
-      track.startLine.start.x, track.startLine.start.y,
-      track.startLine.end.x, track.startLine.end.y
-    ], false).stroke({ width: 4, color: 0xffffff });
-
-    // Draw cars - use body position directly from Matter.js
+    // Draw live cars
     for (const car of carsRef.current) {
       if (!car.state.alive) continue;
 
-      // Get position directly from Matter.js body
       const x = car.body.position.x;
       const y = car.body.position.y;
       const angle = car.body.angle;
       const carColor = parseInt(car.state.color.replace('#', ''), 16);
 
-      // Draw car as a rotated rectangle using transform
-      const hw = GAME_CONSTANTS.CAR_WIDTH / 2;
-      const hh = GAME_CONSTANTS.CAR_HEIGHT / 2;
-
-      // Calculate rotated corners manually
-      const cos = Math.cos(angle);
-      const sin = Math.sin(angle);
-      const corners = [
-        { x: x + (-hw * cos - -hh * sin), y: y + (-hw * sin + -hh * cos) },
-        { x: x + (hw * cos - -hh * sin), y: y + (hw * sin + -hh * cos) },
-        { x: x + (hw * cos - hh * sin), y: y + (hw * sin + hh * cos) },
-        { x: x + (-hw * cos - hh * sin), y: y + (-hw * sin + hh * cos) },
-      ];
-
-      const carPath = corners.flatMap(c => [c.x, c.y]);
-      g.poly(carPath, true).fill(carColor);
-
-      // Draw direction indicator (front of car)
-      const frontX = x + Math.cos(angle) * hh;
-      const frontY = y + Math.sin(angle) * hh;
-      g.circle(frontX, frontY, 3).fill(0xffffff);
+      drawCar(g, x, y, angle, carColor);
 
       // Draw sensors (debug) - only for first few cars to reduce clutter
       if (mode === 'watch-ai-learn' && car.state.id < 3) {
@@ -348,18 +291,7 @@ export default function RacingGame({
         }
       }
     }
-
-    // Draw dead cars (faded)
-    for (const car of carsRef.current) {
-      if (car.state.alive) continue;
-
-      const corners = car.getCorners();
-      if (corners.length < 4) continue;
-
-      const carPath = corners.flatMap(c => [c.x, c.y]);
-      g.poly(carPath, true).fill({ color: 0x333333, alpha: 0.3 });
-    }
-  }, [track, width, height, mode]);
+  }, [mode]);
 
   useEffect(() => {
     renderRef.current = render;
@@ -390,22 +322,26 @@ export default function RacingGame({
         return;
       }
 
-      const graphics = new PixiGraphics();
-      app.stage.addChild(graphics);
+      // Static track layer (drawn once) + dynamic cars layer (redrawn each frame)
+      const trackGraphics = new PixiGraphics();
+      const carsGraphics = new PixiGraphics();
+      app.stage.addChild(trackGraphics);
+      app.stage.addChild(carsGraphics);
+      drawGrass(trackGraphics, width, height);
+      drawTrackSurface(trackGraphics, track);
 
       appRef.current = app;
-      graphicsRef.current = graphics;
+      trackGraphicsRef.current = trackGraphics;
+      carsGraphicsRef.current = carsGraphics;
 
-      // Initialize Matter.js
+      // Collision grid for sensor raycasting (replaces Matter wall bodies)
+      collisionRef.current = new TrackCollision(track.boundaries);
+
+      // Matter.js holds the car bodies; walls aren't needed (off-track check kills cars)
       const engine = Matter.Engine.create({
         gravity: { x: 0, y: 0 }, // Top-down, no gravity
       });
       engineRef.current = engine;
-
-      // Create wall bodies
-      const walls = createWallBodies(track);
-      wallBodiesRef.current = walls;
-      Matter.Composite.add(engine.world, walls);
 
       // Initialize NEAT controller for AI learning mode
       if (mode === 'watch-ai-learn') {
@@ -422,10 +358,15 @@ export default function RacingGame({
       rafRef.current = requestAnimationFrame(gameLoop);
     };
 
-    init();
+    // Defer init one frame so React StrictMode's mount->unmount->remount collapses
+    // to a single init — two concurrent Application.init() calls on the same canvas
+    // corrupt its (single) WebGL context.
+    const initId = requestAnimationFrame(() => { init(); });
 
     // Keyboard event handlers
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Stop arrow keys / space from scrolling the page while driving.
+      if (DRIVE_KEYS.has(e.key)) e.preventDefault();
       if (e.key === 'ArrowUp' || e.key === 'w') inputRef.current.up = true;
       if (e.key === 'ArrowDown' || e.key === 's') inputRef.current.down = true;
       if (e.key === 'ArrowLeft' || e.key === 'a') inputRef.current.left = true;
@@ -444,6 +385,7 @@ export default function RacingGame({
 
     return () => {
       cancelled = true;
+      cancelAnimationFrame(initId);
       runningRef.current = false;
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
 
@@ -457,13 +399,13 @@ export default function RacingGame({
 
       neatRef.current = null;
       carsRef.current = [];
-      wallBodiesRef.current = [];
+      collisionRef.current = null;
 
-      // Clean up Pixi - use ref instead of closure variable
-      if (graphicsRef.current) {
-        graphicsRef.current.destroy();
-        graphicsRef.current = null;
-      }
+      // Clean up Pixi - use refs instead of closure variables
+      trackGraphicsRef.current?.destroy();
+      trackGraphicsRef.current = null;
+      carsGraphicsRef.current?.destroy();
+      carsGraphicsRef.current = null;
       if (appRef.current) {
         try {
           appRef.current.stop();
@@ -474,7 +416,7 @@ export default function RacingGame({
         appRef.current = null;
       }
     };
-  }, [track, mode, width, height, populationSize, createWallBodies, initializeCars, gameLoop]);
+  }, [track, mode, width, height, populationSize, initializeCars, gameLoop]);
 
   return (
     <div className="relative">

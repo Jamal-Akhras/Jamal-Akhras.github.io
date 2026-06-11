@@ -4,7 +4,8 @@ import { Application, Graphics as PixiGraphics } from 'pixi.js';
 import { useDrag } from '@use-gesture/react';
 import type { Point, Track } from '../core/types';
 import { GAME_CONSTANTS } from '../core/types';
-import { generateTrackBoundaries } from './SnapSystem';
+import { buildTrack } from './SnapSystem';
+import { drawGrass, drawTrackSurface } from '../core/trackRender';
 
 interface TrackEditorProps {
   width: number;
@@ -12,217 +13,191 @@ interface TrackEditorProps {
   onTrackComplete: (track: Track) => void;
 }
 
+const MIN_POINT_SPACING = 4; // px between captured stroke points
+
 export default function TrackEditor({ width, height, onTrackComplete }: TrackEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const appRef = useRef<Application | null>(null);
   const graphicsRef = useRef<PixiGraphics | null>(null);
 
-  const [points, setPoints] = useState<Point[]>([]);
+  // In-progress stroke lives in a ref so capturing points doesn't re-render.
+  const pointsRef = useRef<Point[]>([]);
+  const snapRef = useRef<Point | null>(null);
+  const drawRef = useRef<() => void>(() => {});
+
   const [isDrawing, setIsDrawing] = useState(false);
+  const [pointCount, setPointCount] = useState(0);
   const [trackWidth, setTrackWidth] = useState<number>(GAME_CONSTANTS.TRACK_WIDTH_DEFAULT);
-  const [snapIndicator, setSnapIndicator] = useState<Point | null>(null);
   const [track, setTrack] = useState<Track | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  // Initialize Pixi.js application
+  // Initialize Pixi.js application.
+  // Init is deferred one frame so React StrictMode's mount->unmount->remount
+  // collapses to a single real init — a canvas has only one WebGL context, and
+  // two concurrent Application.init() calls on it corrupt the shared context.
   useEffect(() => {
-    if (!canvasRef.current || appRef.current) return;
+    let disposed = false;
+    let app: Application | null = null;
 
-    const initPixi = async () => {
-      const app = new Application();
-      await app.init({
-        canvas: canvasRef.current!,
-        width,
-        height,
-        backgroundColor: GAME_CONSTANTS.TRACK_GRASS_COLOR,
-        antialias: true,
-        resolution: window.devicePixelRatio || 1,
-        autoDensity: true,
-      });
+    const id = requestAnimationFrame(async () => {
+      if (disposed || !canvasRef.current) return;
+      const a = new Application();
+      try {
+        await a.init({
+          canvas: canvasRef.current,
+          width,
+          height,
+          backgroundColor: GAME_CONSTANTS.TRACK_GRASS_COLOR,
+          antialias: true,
+          resolution: window.devicePixelRatio || 1,
+          autoDensity: true,
+        });
+      } catch {
+        a.destroy();
+        return;
+      }
+      if (disposed) {
+        a.destroy();
+        return;
+      }
 
       const graphics = new PixiGraphics();
-      app.stage.addChild(graphics);
+      a.stage.addChild(graphics);
 
-      appRef.current = app;
+      app = a;
+      appRef.current = a;
       graphicsRef.current = graphics;
-    };
-
-    initPixi();
+      drawRef.current();
+    });
 
     return () => {
-      if (appRef.current) {
-        appRef.current.destroy(true);
+      disposed = true;
+      cancelAnimationFrame(id);
+      if (app) {
+        // destroy() (not destroy(true)) so the React-owned canvas element survives
+        try {
+          app.destroy();
+        } catch {
+          // Ignore cleanup errors
+        }
+        app = null;
         appRef.current = null;
         graphicsRef.current = null;
       }
     };
   }, [width, height]);
 
-  // Draw function
+  // Draw function — reads the stroke ref and committed track state.
   const draw = useCallback(() => {
     const g = graphicsRef.current;
     if (!g) return;
 
     g.clear();
+    drawGrass(g, width, height);
 
-    // Draw grass background
-    g.rect(0, 0, width, height);
-    g.fill(GAME_CONSTANTS.TRACK_GRASS_COLOR);
-
-    // If we have a completed track, draw it
     if (track) {
-      // Draw road as thick stroke along center line (handles self-intersecting tracks like figure-8)
-      g.moveTo(track.centerLine[0].x, track.centerLine[0].y);
-      for (const p of track.centerLine) {
-        g.lineTo(p.x, p.y);
-      }
-      g.stroke({
-        width: track.width,
-        color: GAME_CONSTANTS.TRACK_ROAD_COLOR,
-        cap: 'round',
-        join: 'round'
-      });
-
-      // Draw track borders (left boundary)
-      g.moveTo(track.leftBoundary[0].x, track.leftBoundary[0].y);
-      for (const p of track.leftBoundary) {
-        g.lineTo(p.x, p.y);
-      }
-      g.stroke({ width: 3, color: GAME_CONSTANTS.TRACK_BORDER_COLOR });
-
-      // Draw track borders (right boundary)
-      g.moveTo(track.rightBoundary[0].x, track.rightBoundary[0].y);
-      for (const p of track.rightBoundary) {
-        g.lineTo(p.x, p.y);
-      }
-      g.stroke({ width: 3, color: GAME_CONSTANTS.TRACK_BORDER_COLOR });
-
-      // Draw start/finish line
-      g.moveTo(track.startLine.start.x, track.startLine.start.y);
-      g.lineTo(track.startLine.end.x, track.startLine.end.y);
-      g.stroke({ width: 4, color: 0xffffff });
-
-      // Draw checkpoints (debug)
-      for (const cp of track.checkpoints) {
-        g.circle(cp.x, cp.y, 5);
-        g.fill({ color: 0x00ff00, alpha: 0.3 });
-      }
-
-      // Draw center line (debug)
-      g.moveTo(track.centerLine[0].x, track.centerLine[0].y);
-      for (const p of track.centerLine) {
-        g.lineTo(p.x, p.y);
-      }
-      g.stroke({ width: 1, color: 0xffff00, alpha: 0.3 });
-    } else {
-      // Draw current drawing path
-      if (points.length > 1) {
-        // Draw the path with track width preview
-        g.moveTo(points[0].x, points[0].y);
-        for (let i = 1; i < points.length; i++) {
-          g.lineTo(points[i].x, points[i].y);
-        }
-        g.stroke({ width: trackWidth, color: GAME_CONSTANTS.TRACK_ROAD_COLOR, alpha: 0.5 });
-
-        // Draw center line
-        g.moveTo(points[0].x, points[0].y);
-        for (let i = 1; i < points.length; i++) {
-          g.lineTo(points[i].x, points[i].y);
-        }
-        g.stroke({ width: 2, color: 0xffffff, alpha: 0.8 });
-      }
-
-      // Draw start point
-      if (points.length > 0) {
-        g.circle(points[0].x, points[0].y, 10);
-        g.fill(0x00ff00);
-
-        // Inner circle
-        g.circle(points[0].x, points[0].y, 5);
-        g.fill(0xffffff);
-      }
-
-      // Draw snap indicator
-      if (snapIndicator) {
-        g.circle(snapIndicator.x, snapIndicator.y, GAME_CONSTANTS.SNAP_DISTANCE);
-        g.stroke({ width: 3, color: 0x00ff00 });
-      }
+      drawTrackSurface(g, track);
+      return;
     }
-  }, [points, track, trackWidth, width, height, snapIndicator]);
 
-  // Redraw when state changes
+    // In-progress stroke preview
+    const points = pointsRef.current;
+    if (points.length > 1) {
+      const path = points.flatMap(p => [p.x, p.y]);
+      g.poly(path, false).stroke({ width: trackWidth, color: GAME_CONSTANTS.TRACK_ROAD_COLOR, alpha: 0.5, cap: 'round', join: 'round' });
+      g.poly(path, false).stroke({ width: 2, color: 0xffffff, alpha: 0.8 });
+    }
+
+    if (points.length > 0) {
+      g.circle(points[0].x, points[0].y, 10).fill(0x00ff00);
+      g.circle(points[0].x, points[0].y, 5).fill(0xffffff);
+    }
+
+    if (snapRef.current) {
+      g.circle(snapRef.current.x, snapRef.current.y, GAME_CONSTANTS.SNAP_DISTANCE).stroke({ width: 3, color: 0x00ff00 });
+    }
+  }, [track, trackWidth, width, height]);
+
+  // Keep an imperative handle so the drag handler can redraw without re-rendering.
   useEffect(() => {
+    drawRef.current = draw;
     draw();
   }, [draw]);
 
-  // Check if we should snap to close the loop
-  const checkSnap = useCallback((point: Point): boolean => {
-    if (points.length < GAME_CONSTANTS.MIN_POINTS_FOR_CLOSE) return false;
-    const start = points[0];
-    const dist = Math.sqrt((point.x - start.x) ** 2 + (point.y - start.y) ** 2);
-    return dist < GAME_CONSTANTS.SNAP_DISTANCE;
-  }, [points]);
-
-  // Get mouse position relative to canvas
   const getCanvasPoint = useCallback((clientX: number, clientY: number): Point => {
     if (!containerRef.current) return { x: 0, y: 0 };
     const rect = containerRef.current.getBoundingClientRect();
-    return {
-      x: clientX - rect.left,
-      y: clientY - rect.top,
-    };
+    // Map display coordinates back to canvas space (handles CSS scaling, e.g. fullscreen).
+    const scaleX = rect.width ? width / rect.width : 1;
+    const scaleY = rect.height ? height / rect.height : 1;
+    return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
+  }, [width, height]);
+
+  const isNearStart = useCallback((point: Point): boolean => {
+    const pts = pointsRef.current;
+    if (pts.length < GAME_CONSTANTS.MIN_POINTS_FOR_CLOSE) return false;
+    return distance(point, pts[0]) < GAME_CONSTANTS.SNAP_DISTANCE;
   }, []);
 
   // Handle drag gesture
   const bind = useDrag(
     ({ down, xy: [x, y], first, last }) => {
-      if (track) return; // Don't allow drawing when track exists
+      if (track) return; // No drawing once a track exists
 
       const point = getCanvasPoint(x, y);
 
       if (first) {
+        pointsRef.current = [point];
+        snapRef.current = null;
+        setError(null);
         setIsDrawing(true);
-        setPoints([point]);
-        setSnapIndicator(null);
-      } else if (down) {
-        // Add point if moved enough distance
-        setPoints(prev => {
-          const lastPoint = prev[prev.length - 1];
-          const dist = Math.sqrt((point.x - lastPoint.x) ** 2 + (point.y - lastPoint.y) ** 2);
-          if (dist > 5) {
-            return [...prev, point];
-          }
-          return prev;
-        });
+        setPointCount(1);
+        drawRef.current();
+        return;
+      }
 
-        // Check for snap
-        if (checkSnap(point)) {
-          setSnapIndicator(points[0]);
-        } else {
-          setSnapIndicator(null);
+      if (down) {
+        const pts = pointsRef.current;
+        const lastPoint = pts[pts.length - 1];
+        if (distance(point, lastPoint) > MIN_POINT_SPACING) {
+          pts.push(point);
+          setPointCount(pts.length);
         }
+        snapRef.current = isNearStart(point) ? pts[0] : null;
+        drawRef.current();
       }
 
       if (last) {
         setIsDrawing(false);
-        if (checkSnap(point) && points.length >= GAME_CONSTANTS.MIN_POINTS_FOR_CLOSE) {
-          // Close the loop and generate track
-          const closedPoints = [...points, points[0]];
-          const generatedTrack = generateTrackBoundaries(closedPoints, trackWidth);
-          setTrack(generatedTrack);
-          onTrackComplete(generatedTrack);
+        const pts = pointsRef.current;
+        const shouldClose = isNearStart(point) && pts.length >= GAME_CONSTANTS.MIN_POINTS_FOR_CLOSE;
+        snapRef.current = null;
+
+        if (shouldClose) {
+          const result = buildTrack(pts, trackWidth);
+          if (result.ok && result.track) {
+            setTrack(result.track);
+            onTrackComplete(result.track);
+          } else {
+            setError(result.reason ?? 'Could not build a track from that stroke.');
+            pointsRef.current = [];
+            setPointCount(0);
+          }
         }
-        setSnapIndicator(null);
+        drawRef.current();
       }
     },
     { pointer: { touch: true } }
   );
 
-  // Clear track and start over
   const handleClear = () => {
-    setPoints([]);
+    pointsRef.current = [];
+    snapRef.current = null;
     setTrack(null);
-    setSnapIndicator(null);
+    setError(null);
+    setPointCount(0);
+    drawRef.current();
   };
 
   return (
@@ -252,14 +227,16 @@ export default function TrackEditor({ width, height, onTrackComplete }: TrackEdi
       </div>
 
       {/* Status indicator */}
-      <div className="absolute top-4 right-4 z-10 rounded-xl bg-black/50 px-3 py-2 backdrop-blur text-sm">
-        {track ? (
+      <div className="absolute top-4 right-4 z-10 rounded-xl bg-black/50 px-3 py-2 backdrop-blur text-sm max-w-[260px]">
+        {error ? (
+          <span className="text-red-400">{error}</span>
+        ) : track ? (
           <span className="text-green-400">Track complete! Select a mode to play.</span>
         ) : isDrawing ? (
-          <span className="text-yellow-400">Drawing... bring back to start to close</span>
-        ) : points.length > 0 ? (
+          <span className="text-yellow-400">Drawing… bring back to start to close</span>
+        ) : pointCount > 0 ? (
           <span className="text-zinc-300">
-            {points.length} points ({Math.max(0, GAME_CONSTANTS.MIN_POINTS_FOR_CLOSE - points.length)} more needed)
+            {pointCount} points ({Math.max(0, GAME_CONSTANTS.MIN_POINTS_FOR_CLOSE - pointCount)} more needed)
           </span>
         ) : (
           <span className="text-zinc-400">Click and drag to draw a track</span>
@@ -281,4 +258,8 @@ export default function TrackEditor({ width, height, onTrackComplete }: TrackEdi
       </div>
     </div>
   );
+}
+
+function distance(a: Point, b: Point): number {
+  return Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2);
 }

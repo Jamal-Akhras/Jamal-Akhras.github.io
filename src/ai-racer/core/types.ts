@@ -20,6 +20,10 @@ export interface Track {
   centerLine: Point[];
   leftBoundary: Point[];
   rightBoundary: Point[];
+  // All closed wall contours produced by offsetting the centerline. For a simple
+  // loop this is [outerEdge, innerEdge]; a self-crossing track may yield more.
+  // Used for collision walls and for filling the road surface.
+  boundaries: Point[][];
   width: number;
   startLine: {
     start: Point;
@@ -131,15 +135,16 @@ export const GAME_CONSTANTS = {
   CANVAS_WIDTH: 900,
   CANVAS_HEIGHT: 600,
 
-  // Car Physics
-  CAR_WIDTH: 20,
-  CAR_HEIGHT: 40,
-  MAX_SPEED: 300, // px/s
-  ACCELERATION_FORCE: 200, // px/s^2
-  BRAKE_FORCE: 400, // px/s^2
-  FRICTION: 0.98, // velocity multiplier per frame
-  ANGULAR_FRICTION: 0.92, // angular velocity multiplier
-  TURN_SPEED: 3.5, // radians/s at max steering
+  // Car Physics (top-down kinematic model)
+  CAR_WIDTH: 20, // across, perpendicular to travel
+  CAR_LENGTH: 40, // nose-to-tail, along travel direction
+  MAX_SPEED: 320, // px/s forward
+  MAX_REVERSE_SPEED: 120, // px/s
+  ACCELERATION_FORCE: 340, // px/s^2 throttle
+  BRAKE_FORCE: 520, // px/s^2 braking / reverse
+  DRAG: 0.9, // velocity decay per second (rolling + air resistance)
+  TURN_SPEED: 3.4, // radians/s at full lock and full speed
+  TURN_SPEED_REF: 80, // px/s at which full steering authority is reached
 
   // Sensors
   NUM_SENSORS: 9,

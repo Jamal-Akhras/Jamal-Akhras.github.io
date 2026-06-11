@@ -1,7 +1,8 @@
 // src/ai-racer/core/Car.ts
 import Matter from 'matter-js';
-import type { CarState, RacingAction, RacingObservation, Point, Track } from './types';
+import type { CarState, RacingAction, RacingObservation, Track } from './types';
 import { GAME_CONSTANTS } from './types';
+import type { TrackCollision } from './TrackCollision';
 
 export class Car {
   body: Matter.Body;
@@ -13,12 +14,13 @@ export class Car {
   constructor(x: number, y: number, angle: number, color?: string) {
     const id = Car.idCounter++;
 
-    // Create Matter.js body for the car
+    // Create Matter.js body for the car. Length is along local +x so the body's
+    // long axis matches the heading (cos/sin of angle).
     this.body = Matter.Bodies.rectangle(
       x,
       y,
+      GAME_CONSTANTS.CAR_LENGTH,
       GAME_CONSTANTS.CAR_WIDTH,
-      GAME_CONSTANTS.CAR_HEIGHT,
       {
         label: `car-${id}`,
         frictionAir: 0.02,
@@ -69,162 +71,73 @@ export class Car {
   }
 
   /**
-   * Update physics - called each frame before Matter.Engine.update()
+   * Update physics - called each frame before Matter.Engine.update().
+   *
+   * Top-down kinematic car model: we integrate a scalar forward speed and a
+   * heading, then drive the Matter body directly (full grip, no sideways slide).
+   * Matter is used only for collision separation and sensor geometry, so units
+   * stay in clean px/s rather than fighting force-based dynamics.
    */
   update(dt: number): void {
     if (!this.state.alive) return;
 
-    // Sync state from Matter.js body
-    this.state.x = this.body.position.x;
-    this.state.y = this.body.position.y;
-    this.state.angle = this.body.angle;
-    this.state.angularVelocity = this.body.angularVelocity;
+    const C = GAME_CONSTANTS;
 
-    // Calculate forward velocity (velocity in direction of car heading)
-    const vx = this.body.velocity.x;
-    const vy = this.body.velocity.y;
-    const forwardX = Math.cos(this.body.angle);
-    const forwardY = Math.sin(this.body.angle);
-    this.state.velocity = vx * forwardX + vy * forwardY;
-
-    // Apply steering (only when moving)
-    const speedFactor = Math.min(1, Math.abs(this.state.velocity) / 50);
-    const steerAngle = this.state.steering * GAME_CONSTANTS.TURN_SPEED * speedFactor * dt;
-    Matter.Body.setAngularVelocity(this.body, steerAngle / dt * 0.5);
-
-    // Apply acceleration force
-    if (this.state.acceleration > 0 && this.state.velocity < GAME_CONSTANTS.MAX_SPEED) {
-      const force = this.state.acceleration * GAME_CONSTANTS.ACCELERATION_FORCE * dt * 0.001;
-      Matter.Body.applyForce(this.body, this.body.position, {
-        x: forwardX * force,
-        y: forwardY * force,
-      });
+    // --- Longitudinal: integrate forward speed (px/s) ---
+    let v = this.state.velocity;
+    v += this.state.acceleration * C.ACCELERATION_FORCE * dt; // throttle
+    v -= this.state.brake * C.BRAKE_FORCE * dt; // brake / reverse
+    v -= v * C.DRAG * dt; // rolling + air drag
+    v = Math.max(-C.MAX_REVERSE_SPEED, Math.min(C.MAX_SPEED, v));
+    // Snap to rest when coasting to a near-stop so cars don't creep forever.
+    if (this.state.acceleration === 0 && this.state.brake === 0 && Math.abs(v) < 2) {
+      v = 0;
     }
 
-    // Apply braking
-    if (this.state.brake > 0) {
-      const brakeForce = this.state.brake * GAME_CONSTANTS.BRAKE_FORCE * dt * 0.001;
-      const currentSpeed = Math.sqrt(vx * vx + vy * vy);
-      if (currentSpeed > 0.1) {
-        const brakeFactor = Math.min(brakeForce / currentSpeed, 1);
-        Matter.Body.setVelocity(this.body, {
-          x: vx * (1 - brakeFactor),
-          y: vy * (1 - brakeFactor),
-        });
-      }
-    }
+    // --- Steering: authority grows with speed; reverse flips turn direction ---
+    const turnAuthority = Math.min(1, Math.abs(v) / C.TURN_SPEED_REF);
+    const yawRate = this.state.steering * C.TURN_SPEED * turnAuthority * Math.sign(v || 1);
+    this.state.angle += yawRate * dt;
 
-    // Apply friction when not accelerating (simulate engine braking)
-    if (this.state.acceleration === 0 && this.state.brake === 0) {
-      Matter.Body.setVelocity(this.body, {
-        x: vx * GAME_CONSTANTS.FRICTION,
-        y: vy * GAME_CONSTANTS.FRICTION,
-      });
-    }
+    // --- Integrate position along the heading ---
+    const heading = { x: Math.cos(this.state.angle), y: Math.sin(this.state.angle) };
+    const nextX = this.body.position.x + heading.x * v * dt;
+    const nextY = this.body.position.y + heading.y * v * dt;
 
-    // Update lap time
+    // Drive the body directly; zero its velocity so Matter only resolves overlaps.
+    Matter.Body.setPosition(this.body, { x: nextX, y: nextY });
+    Matter.Body.setAngle(this.body, this.state.angle);
+    Matter.Body.setVelocity(this.body, { x: 0, y: 0 });
+    Matter.Body.setAngularVelocity(this.body, 0);
+
+    // --- Sync state ---
+    this.state.x = nextX;
+    this.state.y = nextY;
+    this.state.velocity = v;
+    this.state.angularVelocity = yawRate;
     this.state.lapTime += dt;
-
-    // Track distance traveled
-    this.state.distanceTraveled += Math.abs(this.state.velocity) * dt;
+    this.state.distanceTraveled += Math.abs(v) * dt;
   }
 
   /**
-   * Update sensor readings by raycasting against track walls
+   * Update sensor readings by raycasting against the track collision grid.
    */
-  updateSensors(wallBodies: Matter.Body[]): void {
+  updateSensors(collision: TrackCollision): void {
     if (!this.state.alive) {
       this.sensorDistances.fill(0);
       return;
     }
 
-    const carX = this.body.position.x;
-    const carY = this.body.position.y;
-    const carAngle = this.body.angle;
+    const cx = this.body.position.x;
+    const cy = this.body.position.y;
+    const ca = this.body.angle;
+    const MAX = GAME_CONSTANTS.MAX_SENSOR_DISTANCE;
 
     for (let i = 0; i < GAME_CONSTANTS.NUM_SENSORS; i++) {
-      const sensorAngle = carAngle + (GAME_CONSTANTS.SENSOR_ANGLES[i] * Math.PI) / 180;
-      const endX = carX + Math.cos(sensorAngle) * GAME_CONSTANTS.MAX_SENSOR_DISTANCE;
-      const endY = carY + Math.sin(sensorAngle) * GAME_CONSTANTS.MAX_SENSOR_DISTANCE;
-
-      // Raycast against all wall bodies
-      const rayStart = { x: carX, y: carY };
-      const rayEnd = { x: endX, y: endY };
-
-      let minDist: number = GAME_CONSTANTS.MAX_SENSOR_DISTANCE;
-
-      for (const wall of wallBodies) {
-        const collisions = Matter.Query.ray([wall], rayStart, rayEnd);
-        for (const collision of collisions) {
-          if (collision.bodyA === wall || collision.bodyB === wall) {
-            // Calculate intersection point
-            const intersections = this.rayBodyIntersection(rayStart, rayEnd, wall);
-            for (const intersection of intersections) {
-              const dist = Math.sqrt(
-                (intersection.x - carX) ** 2 + (intersection.y - carY) ** 2
-              );
-              if (dist < minDist) {
-                minDist = dist;
-              }
-            }
-          }
-        }
-      }
-
-      // Normalize to [0, 1]
-      this.sensorDistances[i] = minDist / GAME_CONSTANTS.MAX_SENSOR_DISTANCE;
+      const a = ca + (GAME_CONSTANTS.SENSOR_ANGLES[i] * Math.PI) / 180;
+      const dist = collision.raycast(cx, cy, Math.cos(a), Math.sin(a), MAX);
+      this.sensorDistances[i] = dist / MAX;
     }
-  }
-
-  /**
-   * Get intersection points between a ray and a body's vertices
-   */
-  private rayBodyIntersection(
-    rayStart: Point,
-    rayEnd: Point,
-    body: Matter.Body
-  ): Point[] {
-    const intersections: Point[] = [];
-    const vertices = body.vertices;
-
-    for (let i = 0; i < vertices.length; i++) {
-      const v1 = vertices[i];
-      const v2 = vertices[(i + 1) % vertices.length];
-
-      const intersection = this.lineIntersection(
-        rayStart.x, rayStart.y, rayEnd.x, rayEnd.y,
-        v1.x, v1.y, v2.x, v2.y
-      );
-
-      if (intersection) {
-        intersections.push(intersection);
-      }
-    }
-
-    return intersections;
-  }
-
-  /**
-   * Calculate intersection point of two line segments
-   */
-  private lineIntersection(
-    x1: number, y1: number, x2: number, y2: number,
-    x3: number, y3: number, x4: number, y4: number
-  ): Point | null {
-    const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
-    if (Math.abs(denom) < 0.0001) return null;
-
-    const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
-    const u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denom;
-
-    if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
-      return {
-        x: x1 + t * (x2 - x1),
-        y: y1 + t * (y2 - y1),
-      };
-    }
-
-    return null;
   }
 
   /**
@@ -327,13 +240,6 @@ export class Car {
     }
 
     return Math.max(0, fitness);
-  }
-
-  /**
-   * Get car corners for rendering
-   */
-  getCorners(): Point[] {
-    return this.body.vertices.map(v => ({ x: v.x, y: v.y }));
   }
 
   static resetIdCounter(): void {
