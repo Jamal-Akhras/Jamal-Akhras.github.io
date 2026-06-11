@@ -158,7 +158,8 @@ export const GAME_CONSTANTS = {
   SNAP_DISTANCE: 30, // px to snap to start
   MIN_POINTS_FOR_CLOSE: 15,
   PATH_SMOOTHING_ITERATIONS: 5,
-  CHECKPOINT_SPACING: 50, // px between checkpoints
+  CHECKPOINT_SPACING: 70, // px between checkpoints (must exceed the checkpoint radius)
+  CHECKPOINT_TIMEOUT: 4, // s a car may go without reaching a new checkpoint before it's killed
 
   // NEAT
   POPULATION_SIZE: 50,
@@ -178,6 +179,28 @@ export const GAME_CONSTANTS = {
     '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899', '#f43f5e',
   ],
 } as const;
+
+// ============================================================================
+// AI / training configuration ("The Nerdy Stuff")
+// ============================================================================
+
+export interface AIConfig {
+  hiddenSize: number; // neurons in the network's hidden layer (restart)
+  mutationRate: number; // 0..1 (restart)
+  elitism: number; // fraction of top genomes kept unchanged, 0..1 (restart)
+  checkpointTimeout: number; // s without a new checkpoint before a car is killed (live)
+  maxGenerationTime: number; // s per generation (live)
+  simSpeed: number; // simulation sub-steps per frame while watching (live)
+}
+
+export const DEFAULT_AI_CONFIG: AIConfig = {
+  hiddenSize: 8,
+  mutationRate: GAME_CONSTANTS.MUTATION_RATE,
+  elitism: 0.1,
+  checkpointTimeout: GAME_CONSTANTS.CHECKPOINT_TIMEOUT,
+  maxGenerationTime: GAME_CONSTANTS.MAX_GENERATION_TIME,
+  simSpeed: 4,
+};
 
 // ============================================================================
 // Utility Types

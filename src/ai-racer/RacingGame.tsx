@@ -2,8 +2,8 @@
 import { useRef, useEffect, useCallback, useState } from 'react';
 import Matter from 'matter-js';
 import { Application, Graphics as PixiGraphics } from 'pixi.js';
-import type { Track, RacingAction, GameMode } from './core/types';
-import { GAME_CONSTANTS } from './core/types';
+import type { Track, RacingAction, GameMode, AIConfig } from './core/types';
+import { GAME_CONSTANTS, DEFAULT_AI_CONFIG } from './core/types';
 import { Car } from './core/Car';
 import { NEATController } from './ai/NEATController';
 import { TrackCollision } from './core/TrackCollision';
@@ -46,6 +46,7 @@ interface RacingGameProps {
   width: number;
   height: number;
   populationSize?: number;
+  aiConfig?: AIConfig;
   onGenerationComplete?: (generation: number, bestFitness: number) => void;
 }
 
@@ -55,8 +56,13 @@ export default function RacingGame({
   width,
   height,
   populationSize = GAME_CONSTANTS.POPULATION_SIZE,
+  aiConfig = DEFAULT_AI_CONFIG,
   onGenerationComplete,
 }: RacingGameProps) {
+  // Live config (sim speed, generation time, checkpoint timeout) read each frame
+  // via a ref so those knobs apply without restarting the run.
+  const configRef = useRef(aiConfig);
+  configRef.current = aiConfig;
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const appRef = useRef<Application | null>(null);
@@ -145,114 +151,99 @@ export default function RacingGame({
     };
   }, []);
 
+  // Advance the simulation by one fixed step.
+  const simulate = useCallback((stepDt: number) => {
+    const engine = engineRef.current;
+    if (!engine) return;
+    generationTimeRef.current += stepDt;
+
+    for (let i = 0; i < carsRef.current.length; i++) {
+      const car = carsRef.current[i];
+      if (!car.state.alive) continue;
+
+      let action: RacingAction;
+      if (mode === 'time-trial' || mode === 'live-race') {
+        if (car.state.id === 0) {
+          action = getPlayerAction();
+        } else if (neatRef.current) {
+          action = neatRef.current.getController(i)(car.getObservation());
+        } else {
+          action = getRandomAction();
+        }
+      } else if (mode === 'watch-ai-learn' && neatRef.current) {
+        action = neatRef.current.getController(i)(car.getObservation());
+      } else {
+        action = getRandomAction();
+      }
+
+      // Stall-kill only applies while training; never kill the player/opponents.
+      car.checkpointTimeout = mode === 'watch-ai-learn' ? configRef.current.checkpointTimeout : Infinity;
+      car.applyAction(action);
+      car.update(stepDt);
+      if (collisionRef.current) car.updateSensors(collisionRef.current);
+      car.updateCheckpoint(track);
+    }
+
+    Matter.Engine.update(engine, Math.min(stepDt * 1000, 16.667));
+
+    // Track limits (F1-style): a car is out if 3+ of its 4 wheels are off the road.
+    const collision = collisionRef.current;
+    if (collision) {
+      const L = (GAME_CONSTANTS.CAR_LENGTH / 2) * 0.7; // wheel inset from nose/tail
+      const W = GAME_CONSTANTS.CAR_WIDTH / 2;
+      const wheels: [number, number][] = [[L, W], [L, -W], [-L, W], [-L, -W]];
+      for (const car of carsRef.current) {
+        if (!car.state.alive) continue;
+        const cx = car.body.position.x;
+        const cy = car.body.position.y;
+        const cos = Math.cos(car.body.angle);
+        const sin = Math.sin(car.body.angle);
+        let wheelsOff = 0;
+        for (const [lx, ly] of wheels) {
+          const wx = cx + lx * cos - ly * sin;
+          const wy = cy + lx * sin + ly * cos;
+          if (!collision.isOnTrack(wx, wy)) wheelsOff++;
+        }
+        if (wheelsOff >= 3) car.kill();
+      }
+    }
+
+    // Generation end (watch-ai-learn): score everyone, evolve, reset.
+    if (mode === 'watch-ai-learn' && neatRef.current) {
+      const alive = carsRef.current.filter(c => c.state.alive).length;
+      const timeUp = generationTimeRef.current > configRef.current.maxGenerationTime;
+      if (alive === 0 || timeUp) {
+        for (let i = 0; i < carsRef.current.length; i++) {
+          neatRef.current.setFitness(i, carsRef.current[i].getFitness());
+        }
+        const stats = neatRef.current.evolve();
+        generationRef.current = stats.generation;
+        setGeneration(stats.generation);
+        setBestFitness(stats.bestFitness);
+        onGenerationComplete?.(stats.generation, stats.bestFitness);
+        resetCars();
+      }
+    }
+  }, [mode, track, getPlayerAction, getRandomAction, resetCars, onGenerationComplete]);
+
   // Main game loop
   const gameLoop = useCallback((timestamp: number) => {
     if (!runningRef.current) return;
 
     const dt = lastTimeRef.current ? (timestamp - lastTimeRef.current) / 1000 : GAME_CONSTANTS.FIXED_TIMESTEP;
     lastTimeRef.current = timestamp;
-
-    // Cap delta time
     const cappedDt = Math.min(dt, 0.1);
-    generationTimeRef.current += cappedDt;
 
-    // Update physics
-    if (engineRef.current) {
-      // Apply actions to all cars
-      for (let i = 0; i < carsRef.current.length; i++) {
-        const car = carsRef.current[i];
-        if (!car.state.alive) continue;
+    // Run faster than realtime while watching the AI learn so progress is visible.
+    const steps = mode === 'watch-ai-learn' ? Math.max(1, Math.round(configRef.current.simSpeed)) : 1;
+    const stepDt = mode === 'watch-ai-learn' ? GAME_CONSTANTS.FIXED_TIMESTEP : cappedDt;
+    for (let s = 0; s < steps; s++) simulate(stepDt);
 
-        // Get action based on mode
-        let action: RacingAction;
-        if (mode === 'time-trial' || mode === 'live-race') {
-          // Player controls first car
-          if (car.state.id === 0) {
-            action = getPlayerAction();
-          } else {
-            // AI controls other cars using NEAT if available
-            if (neatRef.current) {
-              const controller = neatRef.current.getController(i);
-              action = controller(car.getObservation());
-            } else {
-              action = getRandomAction();
-            }
-          }
-        } else if (mode === 'watch-ai-learn' && neatRef.current) {
-          // Watch AI Learn mode - use NEAT controller
-          const controller = neatRef.current.getController(i);
-          action = controller(car.getObservation());
-        } else {
-          action = getRandomAction();
-        }
-
-        car.applyAction(action);
-        car.update(cappedDt);
-        if (collisionRef.current) car.updateSensors(collisionRef.current);
-        car.updateCheckpoint(track);
-      }
-
-      // Step physics (cap to 16.667ms to avoid Matter.js warning)
-      const physicsDt = Math.min(cappedDt * 1000, 16.667);
-      Matter.Engine.update(engineRef.current, physicsDt);
-
-      // Track limits (F1-style): a car is out if 3+ of its 4 wheels are off the road.
-      const collision = collisionRef.current;
-      if (collision) {
-        const L = (GAME_CONSTANTS.CAR_LENGTH / 2) * 0.7; // wheel inset from nose/tail
-        const W = GAME_CONSTANTS.CAR_WIDTH / 2;
-        const wheels: [number, number][] = [[L, W], [L, -W], [-L, W], [-L, -W]];
-        for (const car of carsRef.current) {
-          if (!car.state.alive) continue;
-          const cx = car.body.position.x;
-          const cy = car.body.position.y;
-          const cos = Math.cos(car.body.angle);
-          const sin = Math.sin(car.body.angle);
-          let wheelsOff = 0;
-          for (const [lx, ly] of wheels) {
-            const wx = cx + lx * cos - ly * sin;
-            const wy = cy + lx * sin + ly * cos;
-            if (!collision.isOnTrack(wx, wy)) wheelsOff++;
-          }
-          if (wheelsOff >= 3) car.kill();
-        }
-      }
-    }
-
-    // Check for generation end
-    const alive = carsRef.current.filter(c => c.state.alive).length;
-    const timeLimit = generationTimeRef.current > GAME_CONSTANTS.MAX_GENERATION_TIME;
-
-    if ((alive === 0 || timeLimit) && mode === 'watch-ai-learn' && neatRef.current) {
-      // Set fitness scores for all cars
-      for (let i = 0; i < carsRef.current.length; i++) {
-        const fitness = carsRef.current[i].getFitness();
-        neatRef.current.setFitness(i, fitness);
-      }
-
-      // Evolve to next generation
-      const stats = neatRef.current.evolve();
-
-      generationRef.current = stats.generation;
-      setGeneration(stats.generation);
-      setBestFitness(stats.bestFitness);
-
-      if (onGenerationComplete) {
-        onGenerationComplete(stats.generation, stats.bestFitness);
-      }
-
-      // Reset for next generation
-      resetCars();
-    }
-
-    // Update UI state (throttled)
-    setAliveCars(alive);
-
-    // Render
+    setAliveCars(carsRef.current.filter(c => c.state.alive).length);
     renderRef.current();
 
     rafRef.current = requestAnimationFrame(gameLoop);
-  }, [mode, track, getPlayerAction, getRandomAction, resetCars, onGenerationComplete]);
+  }, [mode, simulate]);
 
   // Render only the cars each frame; the track is drawn once into its own layer.
   const render = useCallback(() => {
@@ -343,9 +334,15 @@ export default function RacingGame({
       });
       engineRef.current = engine;
 
-      // Initialize NEAT controller for AI learning mode
+      // Initialize NEAT controller for AI learning mode. Structural options are
+      // read at (re)mount; changing them in the UI bumps a key to remount.
       if (mode === 'watch-ai-learn') {
-        neatRef.current = new NEATController(populationSize);
+        const cfg = configRef.current;
+        neatRef.current = new NEATController(populationSize, {
+          hiddenSize: cfg.hiddenSize,
+          mutationRate: cfg.mutationRate,
+          elitism: cfg.elitism,
+        });
       }
 
       // Initialize cars

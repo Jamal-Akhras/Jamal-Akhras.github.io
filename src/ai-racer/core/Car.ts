@@ -8,6 +8,8 @@ export class Car {
   body: Matter.Body;
   state: CarState;
   sensorDistances: number[] = [];
+  checkpointTimeout: number = GAME_CONSTANTS.CHECKPOINT_TIMEOUT; // s; tunable at runtime
+  private timeSinceCheckpoint = 0; // s since the last checkpoint (anti-circling)
 
   private static idCounter = 0;
 
@@ -82,6 +84,13 @@ export class Car {
     if (!this.state.alive) return;
 
     const C = GAME_CONSTANTS;
+
+    // Kill cars that stall or just circle without reaching the next checkpoint.
+    this.timeSinceCheckpoint += dt;
+    if (this.timeSinceCheckpoint > this.checkpointTimeout) {
+      this.kill();
+      return;
+    }
 
     // --- Longitudinal: integrate forward speed (px/s) ---
     let v = this.state.velocity;
@@ -165,9 +174,13 @@ export class Car {
       (this.state.y - nextCheckpoint.y) ** 2
     );
 
-    // Check if within checkpoint radius
-    if (dist < 30) {
+    // Radius must cover the road width (checkpoints sit on the centre line, so a
+    // car on the outer edge must still register) but stay below the checkpoint
+    // spacing so a stationary car can't tick through several at once.
+    const radius = Math.min(track.width / 2 + 8, GAME_CONSTANTS.CHECKPOINT_SPACING - 12);
+    if (dist < radius) {
       this.state.checkpointsPassed++;
+      this.timeSinceCheckpoint = 0; // made progress — reset the stall timer
       this.state.checkpointIndex = (this.state.checkpointIndex + 1) % track.checkpoints.length;
 
       // Check for lap completion
@@ -215,6 +228,7 @@ export class Car {
     this.state.lapProgress = 0;
     this.state.lapTime = 0;
     this.state.distanceTraveled = 0;
+    this.timeSinceCheckpoint = 0;
     this.sensorDistances.fill(1);
   }
 
@@ -222,22 +236,13 @@ export class Car {
    * Calculate fitness score for NEAT
    */
   getFitness(): number {
-    let fitness = 0;
+    // Checkpoints are the dominant signal: reward following the track in order.
+    let fitness = this.state.checkpointsPassed * 150;
 
-    // Primary: checkpoints passed
-    fitness += this.state.checkpointsPassed * 100;
-
-    // Secondary: progress toward next checkpoint
-    fitness += this.state.lapProgress * 50;
-
-    // Bonus: distance traveled (encourages movement)
-    fitness += this.state.distanceTraveled * 0.1;
-
-    // Bonus: average speed
-    if (this.state.lapTime > 0) {
-      const avgSpeed = this.state.distanceTraveled / this.state.lapTime;
-      fitness += avgSpeed * 0.5;
-    }
+    // Small distance term gives an early gradient before the first checkpoint
+    // (so random cars that merely move forward beat ones that stall), but it's
+    // kept low so it can't outweigh actually making progress around the track.
+    fitness += this.state.distanceTraveled * 0.05;
 
     return Math.max(0, fitness);
   }

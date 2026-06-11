@@ -26,6 +26,7 @@ interface NeatapticApi {
   ) => NeatInstance;
   architect: {
     Random: new (inputSize: number, hiddenSize: number, outputSize: number) => Genome;
+    Perceptron: new (...layers: number[]) => Genome;
   };
   methods: {
     selection: { TOURNAMENT: unknown };
@@ -44,13 +45,24 @@ const { Neat, architect } = api;
 const INPUT_SIZE = GAME_CONSTANTS.NUM_SENSORS + 4; // sensors + velocity + angVel + steering + acceleration
 const OUTPUT_SIZE = 3; // steering, acceleration, brake
 
+export interface NEATOptions {
+  hiddenSize?: number;
+  mutationRate?: number;
+  elitism?: number; // fraction 0..1
+}
+
 export class NEATController {
   private neat: NeatInstance;
   private generation: number = 0;
   private bestFitness: number = 0;
   private fitnessHistory: number[] = [];
+  private eliteFraction: number;
 
-  constructor(populationSize: number = GAME_CONSTANTS.POPULATION_SIZE) {
+  constructor(populationSize: number = GAME_CONSTANTS.POPULATION_SIZE, options: NEATOptions = {}) {
+    const hiddenSize = options.hiddenSize ?? 8;
+    const mutationRate = options.mutationRate ?? GAME_CONSTANTS.MUTATION_RATE;
+    this.eliteFraction = options.elitism ?? 0.1;
+
     // Create NEAT instance
     this.neat = new Neat(
       INPUT_SIZE,
@@ -58,8 +70,8 @@ export class NEATController {
       null, // No fitness function - we'll set scores manually
       {
         popsize: populationSize,
-        elitism: Math.floor(populationSize * 0.1),
-        mutationRate: 0.3,
+        elitism: Math.floor(populationSize * this.eliteFraction),
+        mutationRate,
         mutationAmount: 2,
         selection: api.methods.selection.TOURNAMENT,
         mutation: [
@@ -70,7 +82,9 @@ export class NEATController {
           api.methods.mutation.SUB_NODE,
           api.methods.mutation.SUB_CONN,
         ],
-        network: new architect.Random(INPUT_SIZE, 4, OUTPUT_SIZE),
+        // Fully-connected MLP so every sensor influences the outputs from the
+        // start (a sparse Random net leaves steering near-constant -> cars circle).
+        network: new architect.Perceptron(INPUT_SIZE, hiddenSize, OUTPUT_SIZE),
       }
     );
   }
@@ -141,7 +155,7 @@ export class NEATController {
     const newPopulation: Genome[] = [];
 
     // Elitism: keep top performers
-    const eliteCount = Math.floor(this.neat.popsize * 0.1);
+    const eliteCount = Math.floor(this.neat.popsize * this.eliteFraction);
     for (let i = 0; i < eliteCount; i++) {
       newPopulation.push(this.neat.population[i]);
     }
