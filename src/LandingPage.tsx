@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { motion, AnimatePresence, useReducedMotion, useSpring } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion, useMotionValue, useSpring } from "framer-motion";
 import { Link } from "react-router-dom";
 
 // Components
@@ -27,7 +27,6 @@ export default function LandingPage() {
   const [gatesOpen, setGatesOpen] = useState(false);
   const reduceMotion = useReducedMotion();
   const quoteContainerRef = useRef<HTMLDivElement>(null);
-  const containerRectRef = useRef<DOMRect | null>(null);
   const [corners, setCorners] = useState<{x: number; y: number}[]>([]);
   const mousePos = useMousePosition(isQuoteHovered && !isRevealed);
 
@@ -41,25 +40,29 @@ export default function LandingPage() {
     }
   }, [isRevealed, reduceMotion]);
 
-  // Smooth mouse position with spring for "silky elastic" vector lines
+  // Exact cursor position (relative to the quote container) drives the reticle;
+  // a spring follows it for the "silky elastic" vector lines.
   const springConfig = { stiffness: 150, damping: 15 };
-  const smoothX = useSpring(0, springConfig);
-  const smoothY = useSpring(0, springConfig);
+  const cursorX = useMotionValue(0);
+  const cursorY = useMotionValue(0);
+  const smoothX = useSpring(cursorX, springConfig);
+  const smoothY = useSpring(cursorY, springConfig);
 
-  // Update spring targets when mouse moves
+  // Track the cursor against the container's live rect so the reticle stays
+  // aligned regardless of scroll position or layout shifts.
   useEffect(() => {
-    if (containerRectRef.current) {
-      smoothX.set(mousePos.x - containerRectRef.current.left);
-      smoothY.set(mousePos.y - containerRectRef.current.top);
+    const rect = quoteContainerRef.current?.getBoundingClientRect();
+    if (rect) {
+      cursorX.set(mousePos.x - rect.left);
+      cursorY.set(mousePos.y - rect.top);
     }
-  }, [mousePos.x, mousePos.y, smoothX, smoothY]);
+  }, [mousePos.x, mousePos.y, cursorX, cursorY]);
 
   // Calculate corner positions with resize handling
   useEffect(() => {
     const updateDimensions = () => {
       if (quoteContainerRef.current) {
         const rect = quoteContainerRef.current.getBoundingClientRect();
-        containerRectRef.current = rect;
         setCorners([
           { x: 0, y: 0 },                        // top-left (relative)
           { x: rect.width, y: 0 },               // top-right
@@ -327,7 +330,7 @@ export default function LandingPage() {
                       className="animate-vector-line"
                     />
                   ))}
-                  <motion.g style={{ x: smoothX, y: smoothY }}>
+                  <motion.g style={{ x: cursorX, y: cursorY }}>
                     <circle r="9" fill="none" stroke="#a5b4fc" strokeWidth="1" />
                     <line x1="-14" x2="14" stroke="#a5b4fc" strokeWidth="1" />
                     <line y1="-14" y2="14" stroke="#a5b4fc" strokeWidth="1" />
@@ -339,13 +342,10 @@ export default function LandingPage() {
               {/* Layer 4: Click trigger */}
               {!isRevealed && (
                 <div
-                  className="group absolute inset-0 z-40 cursor-crosshair"
+                  className="absolute inset-0 z-40"
+                  style={{ cursor: "none" }}
                   onClick={() => setIsRevealed(true)}
-                >
-                  <span className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded border border-indigo-400/30 bg-bg-base/80 px-3 py-1 font-mono text-[10px] tracking-[0.2em] text-indigo-300 opacity-70 transition group-hover:border-pink-400/50 group-hover:text-pink-300">
-                    [ CLICK TO INITIALIZE ]
-                  </span>
-                </div>
+                />
               )}
 
                           </div>
