@@ -1,4 +1,4 @@
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { TypewriterLine } from "./TypewriterLine";
 import { TERMINAL_CONTENT, type ActiveNode } from "../constants/terminalContent";
 
@@ -22,9 +22,10 @@ function getLineClassName(line: string): string {
 
 export function Terminal({ activeNode, onClose }: TerminalProps) {
   const content = activeNode ? TERMINAL_CONTENT[activeNode] : null;
+  const reduceMotion = useReducedMotion();
 
   return (
-    <div className="relative w-[550px] rounded-xl overflow-hidden font-mono text-sm shadow-2xl border border-indigo-500/30 bg-black/80 backdrop-blur-xl terminal-scanline">
+    <div className="terminal-scanline relative w-full max-w-[550px] overflow-hidden rounded-xl border border-indigo-500/30 bg-black/80 font-mono text-xs shadow-2xl backdrop-blur-xl sm:text-sm">
       {/* HUD corner accents */}
       <div className="absolute top-0 left-0 w-8 h-8 border-l-2 border-t-2 border-indigo-400/50 rounded-tl-xl pointer-events-none" />
       <div className="absolute top-0 right-0 w-8 h-8 border-r-2 border-t-2 border-pink-400/50 rounded-tr-xl pointer-events-none" />
@@ -49,6 +50,7 @@ export function Terminal({ activeNode, onClose }: TerminalProps) {
         </div>
         <button
           onClick={onClose}
+          aria-label="Close terminal"
           className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/10 text-zinc-400 hover:text-pink-400 transition-colors"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -63,13 +65,13 @@ export function Terminal({ activeNode, onClose }: TerminalProps) {
           {content ? (
             <motion.div
               key={activeNode}
-              initial={{ opacity: 0, y: 12, filter: "blur(4px)" }}
+              initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 12, filter: "blur(4px)" }}
               animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-              exit={{ opacity: 0, y: -8, filter: "blur(2px)" }}
-              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -8, filter: "blur(2px)" }}
+              transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 400, damping: 30 }}
             >
-              <div className={content.imageSrc ? "grid grid-cols-5 gap-6" : ""}>
-                <div className={content.imageSrc ? "col-span-3" : ""}>
+              <div className={content.imageSrc ? "grid gap-4 sm:grid-cols-5 sm:gap-6" : ""}>
+                <div className={content.imageSrc ? "sm:col-span-3" : ""}>
                   <div className="mb-3 flex items-start gap-2">
                     <span className="text-pink-400 select-none">&gt;</span>
                     <TypewriterLine
@@ -90,17 +92,17 @@ export function Terminal({ activeNode, onClose }: TerminalProps) {
                 </div>
 
                 {content.imageSrc && (
-                  <div className="col-span-2">
+                  <div className="sm:col-span-2">
                     <motion.div
                       className="relative overflow-hidden rounded-lg border border-indigo-500/30"
                       style={{ transformOrigin: "top" }}
-                      initial={{ scaleY: 0, opacity: 0, x: 0 }}
+                      initial={reduceMotion ? { opacity: 0 } : { scaleY: 0, opacity: 0, x: 0 }}
                       animate={{
                         scaleY: 1,
                         opacity: 1,
-                        x: [0, -1, 1, 0]
+                        x: reduceMotion ? 0 : [0, -1, 1, 0]
                       }}
-                      transition={{
+                      transition={reduceMotion ? { duration: 0 } : {
                         scaleY: { duration: 0.8, ease: [0.33, 1, 0.68, 1], delay: 0.4 },
                         opacity: { duration: 0.8, ease: [0.33, 1, 0.68, 1], delay: 0.4 },
                         x: { duration: 0.4, delay: 0.4, times: [0, 0.33, 0.66, 1] }
@@ -109,15 +111,15 @@ export function Terminal({ activeNode, onClose }: TerminalProps) {
                       <img
                         src={content.imageSrc}
                         alt=""
-                        loading="eager"
+                        loading="lazy"
                         className="w-full h-auto object-cover"
                         style={{ filter: "saturate(0.7) contrast(1.2) brightness(0.9)" }}
                       />
                       <motion.div
                         className="absolute inset-0 transmission-noise"
-                        initial={{ opacity: 1 }}
+                        initial={{ opacity: reduceMotion ? 0 : 1 }}
                         animate={{ opacity: 0 }}
-                        transition={{ duration: 0.8, ease: "easeOut", delay: 0.4 }}
+                        transition={reduceMotion ? { duration: 0 } : { duration: 0.8, ease: "easeOut", delay: 0.4 }}
                       />
                     </motion.div>
                   </div>
@@ -130,7 +132,7 @@ export function Terminal({ activeNode, onClose }: TerminalProps) {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.98 }}
-              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 400, damping: 30 }}
               className="flex flex-col items-center justify-center h-[240px]"
             >
               <div className="relative mb-6">

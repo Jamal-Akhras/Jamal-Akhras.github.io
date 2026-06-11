@@ -5,6 +5,7 @@ import type { ActiveNode } from "../../constants/terminalContent";
 interface NeuralNetworkProps {
   activeNode: ActiveNode;
   setActiveNode: (node: ActiveNode) => void;
+  isActive: boolean;
 }
 
 // Node data
@@ -42,7 +43,7 @@ const VALUES_RADIUS = 28;
 const PROC_RADIUS = 22;
 const OUTPUT_RADIUS = 18;
 
-export const NeuralNetwork = memo(function NeuralNetwork({ activeNode, setActiveNode }: NeuralNetworkProps) {
+export const NeuralNetwork = memo(function NeuralNetwork({ activeNode, setActiveNode, isActive }: NeuralNetworkProps) {
   const activeInputIndices = useMemo(() => {
     if (!activeNode) return new Set<number>();
 
@@ -55,6 +56,8 @@ export const NeuralNetwork = memo(function NeuralNetwork({ activeNode, setActive
     const count = 2 + Math.floor(Math.random() * 3); // 2, 3, or 4
     return new Set(indices.slice(0, count));
   }, [activeNode]);
+
+  const ambientClass = (variant: number) => isActive ? `animate-ambient-comet-${variant}` : "";
 
   return (
     <svg viewBox="0 0 450 295" className="w-full h-auto">
@@ -107,14 +110,16 @@ export const NeuralNetwork = memo(function NeuralNetwork({ activeNode, setActive
             }`}
             strokeWidth={1}
           />
-          <path
-            d={`M ${INPUT_CX + INPUT_RADIUS} ${input.y} Q ${(INPUT_CX + CORE_CX) / 2} ${(input.y + CORE_NODE.y) / 2} ${CORE_CX - CORE_RADIUS} ${CORE_NODE.y}`}
-            fill="none"
-            stroke="url(#cometGradient)"
-            strokeWidth={2}
-            className={`animate-ambient-comet-${(i % 5) + 1}`}
-            strokeLinecap="round"
-          />
+          {(activeInputIndices.has(i) || (!activeNode && i === 1)) && (
+            <path
+              d={`M ${INPUT_CX + INPUT_RADIUS} ${input.y} Q ${(INPUT_CX + CORE_CX) / 2} ${(input.y + CORE_NODE.y) / 2} ${CORE_CX - CORE_RADIUS} ${CORE_NODE.y}`}
+              fill="none"
+              stroke="url(#cometGradient)"
+              strokeWidth={2}
+              className={ambientClass((i % 5) + 1)}
+              strokeLinecap="round"
+            />
+          )}
         </g>
       ))}
 
@@ -129,14 +134,16 @@ export const NeuralNetwork = memo(function NeuralNetwork({ activeNode, setActive
             }`}
             strokeWidth={1}
           />
-          <path
-            d={`M ${INPUT_CX + INPUT_RADIUS} ${input.y} Q ${(INPUT_CX + CORE_CX) / 2} ${(input.y + VALUES_NODE.y) / 2} ${CORE_CX - VALUES_RADIUS} ${VALUES_NODE.y}`}
-            fill="none"
-            stroke="url(#emeraldCometGradient)"
-            strokeWidth={2}
-            className={`animate-ambient-comet-${((i + 2) % 5) + 1}`}
-            strokeLinecap="round"
-          />
+          {(activeInputIndices.has(i) || (!activeNode && i === 3)) && (
+            <path
+              d={`M ${INPUT_CX + INPUT_RADIUS} ${input.y} Q ${(INPUT_CX + CORE_CX) / 2} ${(input.y + VALUES_NODE.y) / 2} ${CORE_CX - VALUES_RADIUS} ${VALUES_NODE.y}`}
+              fill="none"
+              stroke="url(#emeraldCometGradient)"
+              strokeWidth={2}
+              className={ambientClass(((i + 2) % 5) + 1)}
+              strokeLinecap="round"
+            />
+          )}
         </g>
       ))}
 
@@ -157,17 +164,17 @@ export const NeuralNetwork = memo(function NeuralNetwork({ activeNode, setActive
               fill="none"
               stroke="url(#cometGradient)"
               strokeWidth={3}
-              className="animate-comet"
+              className={isActive ? "animate-comet" : ""}
               strokeLinecap="round"
             />
           )}
-          {activeNode !== proc.id && (
+          {!activeNode && i === 0 && (
             <path
               d={`M ${CORE_CX + CORE_RADIUS} ${CORE_NODE.y} Q ${(CORE_CX + PROC_CX) / 2} ${(CORE_NODE.y + proc.y) / 2} ${PROC_CX - PROC_RADIUS} ${proc.y}`}
               fill="none"
               stroke="url(#cometGradient)"
               strokeWidth={2}
-              className={`animate-ambient-comet-${((i + 2) % 5) + 1}`}
+              className={ambientClass(((i + 2) % 5) + 1)}
               strokeLinecap="round"
             />
           )}
@@ -191,17 +198,17 @@ export const NeuralNetwork = memo(function NeuralNetwork({ activeNode, setActive
               fill="none"
               stroke="url(#emeraldCometGradient)"
               strokeWidth={3}
-              className="animate-comet"
+              className={isActive ? "animate-comet" : ""}
               strokeLinecap="round"
             />
           )}
-          {activeNode !== proc.id && (
+          {!activeNode && i === 2 && (
             <path
               d={`M ${CORE_CX + VALUES_RADIUS} ${VALUES_NODE.y} Q ${(CORE_CX + PROC_CX) / 2} ${(VALUES_NODE.y + proc.y) / 2} ${PROC_CX - PROC_RADIUS} ${proc.y}`}
               fill="none"
               stroke="url(#emeraldCometGradient)"
               strokeWidth={2}
-              className={`animate-ambient-comet-${((i + 4) % 5) + 1}`}
+              className={ambientClass(((i + 4) % 5) + 1)}
               strokeLinecap="round"
             />
           )}
@@ -227,13 +234,13 @@ export const NeuralNetwork = memo(function NeuralNetwork({ activeNode, setActive
               className="stroke-indigo-400/15 transition-all duration-300"
               strokeWidth={1}
             />
-            {(i + j) % 2 === 0 && (
+            {(activeNode === proc.id || (!activeNode && i === j)) && (
               <path
                 d={`M ${PROC_CX + PROC_RADIUS} ${proc.y} Q ${(PROC_CX + OUTPUT_CX) / 2} ${(proc.y + output.y) / 2} ${OUTPUT_CX - OUTPUT_RADIUS} ${output.y}`}
                 fill="none"
                 stroke="url(#cometGradient)"
                 strokeWidth={2}
-                className={`animate-ambient-comet-${((i + j + 3) % 5) + 1}`}
+                className={activeNode === proc.id && isActive ? "animate-comet" : ambientClass(((i + j + 3) % 5) + 1)}
                 strokeLinecap="round"
               />
             )}
@@ -282,7 +289,7 @@ export const NeuralNetwork = memo(function NeuralNetwork({ activeNode, setActive
               x={INPUT_CX - INPUT_RADIUS - 6}
               y={node.y + 3}
               textAnchor="end"
-              className={`text-[7px] font-mono transition-all duration-500 ${
+              className={`text-[8px] font-mono transition-all duration-500 ${
                 isLit ? "fill-white" : "fill-indigo-300"
               }`}
               filter="url(#textShadow)"
@@ -429,14 +436,11 @@ export const NeuralNetwork = memo(function NeuralNetwork({ activeNode, setActive
               strokeWidth={1}
               className="hover:stroke-pink-400 hover:fill-pink-500/10 transition-all duration-300"
             />
-            <text
-              x={OUTPUT_CX}
-              y={node.y + 3}
-              textAnchor="middle"
-              className="fill-pink-300 text-[6px] font-bold font-mono tracking-wider hover:fill-white transition-all duration-300"
-              filter="url(#textShadow)"
-            >
+            <text x={OUTPUT_CX} y={node.y + 2} textAnchor="middle" className="fill-pink-200 text-[7px] font-bold font-mono tracking-wider" filter="url(#textShadow)">
               {node.label.toUpperCase()}
+            </text>
+            <text x={OUTPUT_CX} y={node.y + 29} textAnchor="middle" className="fill-pink-300/80 text-[7px] font-mono tracking-wide" filter="url(#textShadow)">
+              {node.subtitle.toUpperCase()}
             </text>
           </g>
         </Link>

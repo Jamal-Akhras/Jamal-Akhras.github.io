@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useReducedMotion } from "framer-motion";
 import { useTypewriter } from "../hooks/useTypewriter";
 
 interface TypewriterLineProps {
@@ -10,6 +11,7 @@ interface TypewriterLineProps {
 
 export function TypewriterLine({ text, delay, className, onComplete }: TypewriterLineProps) {
   const { displayedText, isComplete } = useTypewriter(text, 20, delay);
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     if (isComplete && onComplete) {
@@ -21,8 +23,8 @@ export function TypewriterLine({ text, delay, className, onComplete }: Typewrite
 
   return (
     <div className={className}>
-      {displayedText}
-      {!isComplete && <span className="animate-pulse">▌</span>}
+      {reduceMotion ? text : displayedText}
+      {!reduceMotion && !isComplete && <span className="animate-pulse">|</span>}
     </div>
   );
 }

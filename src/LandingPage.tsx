@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { motion, AnimatePresence, useSpring } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion, useSpring } from "framer-motion";
 import { Link } from "react-router-dom";
 
 // Components
@@ -25,20 +25,21 @@ export default function LandingPage() {
   // State-based reveal
   const [isRevealed, setIsRevealed] = useState(false);
   const [gatesOpen, setGatesOpen] = useState(false);
+  const reduceMotion = useReducedMotion();
   const quoteContainerRef = useRef<HTMLDivElement>(null);
   const containerRectRef = useRef<DOMRect | null>(null);
   const [corners, setCorners] = useState<{x: number; y: number}[]>([]);
-  const mousePos = useMousePosition();
+  const mousePos = useMousePosition(isQuoteHovered && !isRevealed);
 
   // Delay neural network interactivity until gates finish animating
   useEffect(() => {
     if (isRevealed) {
-      const timer = setTimeout(() => setGatesOpen(true), 500);
+      const timer = setTimeout(() => setGatesOpen(true), reduceMotion ? 0 : 500);
       return () => clearTimeout(timer);
     } else {
       setGatesOpen(false);
     }
-  }, [isRevealed]);
+  }, [isRevealed, reduceMotion]);
 
   // Smooth mouse position with spring for "silky elastic" vector lines
   const springConfig = { stiffness: 150, damping: 15 };
@@ -69,8 +70,9 @@ export default function LandingPage() {
     };
 
     updateDimensions();
-    window.addEventListener('resize', updateDimensions);
-    return () => window.removeEventListener('resize', updateDimensions);
+    const resizeObserver = new ResizeObserver(updateDimensions);
+    if (quoteContainerRef.current) resizeObserver.observe(quoteContainerRef.current);
+    return () => resizeObserver.disconnect();
   }, []);
 
   return (
@@ -180,36 +182,36 @@ export default function LandingPage() {
                   opacity: isRevealed ? 1 : 0.05,
                   filter: isRevealed ? "blur(0px)" : "blur(12px)"
                 }}
-                transition={{ type: "spring", stiffness: 80, damping: 20 }}
+                transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 80, damping: 20 }}
               >
-                <div className="flex flex-row items-center justify-center gap-12 w-full max-w-7xl mx-auto transition-all duration-700">
+                <div className="mx-auto flex w-full max-w-7xl flex-col items-center justify-center gap-6 transition-all duration-700 lg:flex-row lg:gap-12">
                   <motion.div
-                    className="flex-[1.2] flex items-center justify-center transform-gpu-3d"
-                    animate={{ x: activeNode ? -40 : 0 }}
-                    transition={{ type: "spring", stiffness: 150, damping: 20 }}
+                    className="flex w-full flex-[1.2] items-center justify-center transform-gpu-3d"
+                    animate={{ x: reduceMotion ? 0 : activeNode ? -24 : 0 }}
+                    transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 150, damping: 20 }}
                   >
-                    <NeuralNetwork activeNode={activeNode} setActiveNode={setActiveNode} />
+                    <NeuralNetwork activeNode={activeNode} setActiveNode={setActiveNode} isActive={isRevealed} />
                   </motion.div>
 
                   <AnimatePresence mode="popLayout">
                     {isRevealed && activeNode && (
-                      <div style={{ perspective: "1200px", transformStyle: "preserve-3d" }}>
+                      <div className="w-full max-w-[550px]" style={{ perspective: "1200px", transformStyle: "preserve-3d" }}>
                         <motion.div
-                          className="flex-1 max-w-[550px] transform-gpu-3d"
+                          className="w-full transform-gpu-3d"
                           style={{
                             transformStyle: "preserve-3d",
                             transformOrigin: "right center"
                           }}
-                          initial={{ rotateY: -90, z: 0, opacity: 0, filter: "blur(8px)" }}
+                          initial={reduceMotion ? { opacity: 0 } : { rotateY: -70, z: 0, opacity: 0, filter: "blur(8px)" }}
                           animate={{
                             rotateY: 0,
-                            z: 50,
+                            z: reduceMotion ? 0 : 32,
                             opacity: 1,
                             filter: "blur(0px)",
                             boxShadow: "0 0 30px rgba(129,140,248,0.2)"
                           }}
-                          exit={{ rotateY: -45, z: 0, opacity: 0, filter: "blur(6px)", boxShadow: "none" }}
-                          transition={{ type: "spring", stiffness: 150, damping: 20 }}
+                          exit={reduceMotion ? { opacity: 0 } : { rotateY: -35, z: 0, opacity: 0, filter: "blur(6px)", boxShadow: "none" }}
+                          transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 150, damping: 20 }}
                         >
                           <Terminal activeNode={activeNode} onClose={() => setActiveNode(null)} />
                         </motion.div>
@@ -231,10 +233,10 @@ export default function LandingPage() {
                     backfaceVisibility: "visible"
                   }}
                   animate={{
-                    rotateX: isRevealed ? 88 : 0,
-                    opacity: isRevealed ? 0.4 : 1
+                    rotateX: isRevealed && !reduceMotion ? 88 : 0,
+                    opacity: isRevealed ? reduceMotion ? 0 : 0.4 : 1
                   }}
-                  transition={{ type: "spring", stiffness: 80, damping: 15 }}
+                  transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 80, damping: 15 }}
                 >
                   <h1 className={`text-balance text-5xl font-extrabold tracking-tight sm:text-7xl text-center px-4 transition-colors duration-500 ${
                     isRevealed ? "text-text-secondary" : "text-text-primary"
@@ -254,10 +256,10 @@ export default function LandingPage() {
                     backfaceVisibility: "visible"
                   }}
                   animate={{
-                    rotateX: isRevealed ? -88 : 0,
-                    opacity: isRevealed ? 0.4 : 1
+                    rotateX: isRevealed && !reduceMotion ? -88 : 0,
+                    opacity: isRevealed ? reduceMotion ? 0 : 0.4 : 1
                   }}
-                  transition={{ type: "spring", stiffness: 80, damping: 15 }}
+                  transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 80, damping: 15 }}
                 >
                   <h1 className={`text-balance text-5xl font-extrabold tracking-tight sm:text-7xl text-center px-4 transition-colors duration-500 ${
                     isRevealed ? "text-text-secondary" : "text-text-primary"
@@ -276,9 +278,9 @@ export default function LandingPage() {
                   transformStyle: "preserve-3d"
                 }}
                 animate={{
-                  rotateX: isRevealed ? 88 : 0
+                  rotateX: isRevealed && !reduceMotion ? 88 : 0
                 }}
-                transition={{ type: "spring", stiffness: 80, damping: 15 }}
+                transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 80, damping: 15 }}
               >
                 <motion.button
                   className="px-4 py-1.5 font-mono text-xs text-indigo-400 bg-black/80 border border-indigo-500/40 rounded-b transition-colors duration-200 hover:text-pink-500 hover:border-pink-500/50 hover:shadow-[0_0_15px_rgba(244,114,182,0.3)]"
@@ -288,10 +290,10 @@ export default function LandingPage() {
                     pointerEvents: isRevealed ? "auto" : "none"
                   }}
                   animate={{
-                    rotateX: isRevealed ? -88 : -90,
+                    rotateX: isRevealed && !reduceMotion ? -88 : -90,
                     opacity: isRevealed ? 1 : 0
                   }}
-                  transition={{ type: "spring", stiffness: 80, damping: 15, delay: 0.1 }}
+                  transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 80, damping: 15, delay: 0.1 }}
                   onClick={() => {
                     setIsRevealed(false);
                     setActiveNode(null);
@@ -325,16 +327,25 @@ export default function LandingPage() {
                       className="animate-vector-line"
                     />
                   ))}
+                  <motion.g style={{ x: smoothX, y: smoothY }}>
+                    <circle r="9" fill="none" stroke="#a5b4fc" strokeWidth="1" />
+                    <line x1="-14" x2="14" stroke="#a5b4fc" strokeWidth="1" />
+                    <line y1="-14" y2="14" stroke="#a5b4fc" strokeWidth="1" />
+                    <circle r="2" fill="#f472b6" />
+                  </motion.g>
                 </svg>
               )}
 
-              {/* Layer 4: Click trigger (z-40) - cursor: none for ghost cursor effect */}
+              {/* Layer 4: Click trigger */}
               {!isRevealed && (
                 <div
-                  className="absolute inset-0 z-40"
-                  style={{ cursor: "none" }}
+                  className="group absolute inset-0 z-40 cursor-crosshair"
                   onClick={() => setIsRevealed(true)}
-                />
+                >
+                  <span className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded border border-indigo-400/30 bg-bg-base/80 px-3 py-1 font-mono text-[10px] tracking-[0.2em] text-indigo-300 opacity-70 transition group-hover:border-pink-400/50 group-hover:text-pink-300">
+                    [ CLICK TO INITIALIZE ]
+                  </span>
+                </div>
               )}
 
                           </div>
