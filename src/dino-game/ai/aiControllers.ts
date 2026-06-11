@@ -89,7 +89,7 @@ export function endlessController(obs: AIObservation): Action {
   return { jump: false, duck: false };
 }
 
-export function baselineController(_: AIObservation): Action {
+export function baselineController(): Action {
   return { jump: false, duck: false };
 }
 
@@ -99,7 +99,7 @@ export type ReplayTrack = ReplayFrame[];
 
 export function makeReplayController(track: ReplayTrack) {
   let t = 0, i = 0;
-  return (_: AIObservation): Action => {
+  return (): Action => {
     t += 1 / 60;
     while (i + 1 < track.length && track[i + 1].t <= t) i++;
     return track[i]?.action ?? { jump: false, duck: false };

@@ -14,7 +14,6 @@ export default function AIRacerPage() {
 
   const handleTrackComplete = (newTrack: Track) => {
     setTrack(newTrack);
-    console.log('Track created:', newTrack);
   };
 
   const btn = (active: boolean, disabled = false) =>
@@ -138,7 +137,7 @@ export default function AIRacerPage() {
 
           {mode === 'time-trial' && track && (
             <RacingGame
-              key={`time-trial-${Date.now()}`}
+              key="time-trial"
               track={track}
               mode={mode}
               width={GAME_CONSTANTS.CANVAS_WIDTH}
@@ -149,7 +148,7 @@ export default function AIRacerPage() {
 
           {mode === 'live-race' && track && (
             <RacingGame
-              key={`live-race-${Date.now()}`}
+              key="live-race"
               track={track}
               mode={mode}
               width={GAME_CONSTANTS.CANVAS_WIDTH}

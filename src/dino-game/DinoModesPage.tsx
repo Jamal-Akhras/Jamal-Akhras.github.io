@@ -79,9 +79,6 @@ export default function DinoModesPage() {
           playerColor={mode === "endless" ? "#ef4444" : undefined}
           disableUserControl={mode === "endless"}
           // seed={12345} // (optional) force deterministic runs across modes
-          onEpisodeEnd={(score, seed) => {
-            console.log(`[${mode}] score=${score} seed=${seed}`);
-          }}
         />
       </main>
     </div>

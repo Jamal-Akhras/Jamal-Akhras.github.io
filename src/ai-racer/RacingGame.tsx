@@ -40,6 +40,7 @@ export default function RacingGame({
   const lastTimeRef = useRef<number>(0);
   const generationRef = useRef(0);
   const generationTimeRef = useRef(0);
+  const renderRef = useRef<() => void>(() => {});
 
   // NEAT controller ref
   const neatRef = useRef<NEATController | null>(null);
@@ -215,15 +216,15 @@ export default function RacingGame({
         const carY = car.body.position.y;
 
         // Find minimum distance to any point on centerline
-        let minDist = Infinity;
+        let minDistSquared = Infinity;
         for (const point of track.centerLine) {
-          const dist = Math.sqrt((carX - point.x) ** 2 + (carY - point.y) ** 2);
-          if (dist < minDist) minDist = dist;
+          const distSquared = (carX - point.x) ** 2 + (carY - point.y) ** 2;
+          if (distSquared < minDistSquared) minDistSquared = distSquared;
         }
 
         // Kill car if too far from track (track width / 2 + small margin)
         const maxDistFromCenter = (track.width / 2) + 10;
-        if (minDist > maxDistFromCenter) {
+        if (minDistSquared > maxDistFromCenter ** 2) {
           car.kill();
         }
       }
@@ -259,7 +260,7 @@ export default function RacingGame({
     setAliveCars(alive);
 
     // Render
-    render();
+    renderRef.current();
 
     rafRef.current = requestAnimationFrame(gameLoop);
   }, [mode, track, getPlayerAction, getRandomAction, resetCars, onGenerationComplete]);
@@ -360,11 +361,16 @@ export default function RacingGame({
     }
   }, [track, width, height, mode]);
 
+  useEffect(() => {
+    renderRef.current = render;
+  }, [render]);
+
   // Initialize Pixi.js and Matter.js
   useEffect(() => {
     if (!canvasRef.current) return;
 
     let app: Application | null = null;
+    let cancelled = false;
 
     const init = async () => {
       // Initialize Pixi.js
@@ -378,6 +384,11 @@ export default function RacingGame({
         resolution: window.devicePixelRatio || 1,
         autoDensity: true,
       });
+
+      if (cancelled) {
+        app.destroy();
+        return;
+      }
 
       const graphics = new PixiGraphics();
       app.stage.addChild(graphics);
@@ -432,6 +443,7 @@ export default function RacingGame({
     window.addEventListener('keyup', handleKeyUp);
 
     return () => {
+      cancelled = true;
       runningRef.current = false;
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
 
@@ -456,7 +468,7 @@ export default function RacingGame({
         try {
           appRef.current.stop();
           appRef.current.destroy();
-        } catch (e) {
+        } catch {
           // Ignore cleanup errors
         }
         appRef.current = null;

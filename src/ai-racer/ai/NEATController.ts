@@ -1,17 +1,51 @@
 // src/ai-racer/ai/NEATController.ts
-// @ts-nocheck - neataptic doesn't have TypeScript types
 import neataptic from 'neataptic';
 import type { RacingObservation, RacingAction, GenerationStats } from '../core/types';
 import { GAME_CONSTANTS } from '../core/types';
 
-const { Neat, architect } = neataptic;
+interface Genome {
+  score?: number;
+  activate(input: number[]): number[];
+  mutate(method: unknown): void;
+  toJSON(): unknown;
+}
+
+interface NeatInstance {
+  population: Genome[];
+  popsize: number;
+  mutation: unknown[];
+  sort(): void;
+}
+
+interface NeatapticApi {
+  Neat: new (
+    inputSize: number,
+    outputSize: number,
+    fitnessFunction: null,
+    options: Record<string, unknown>
+  ) => NeatInstance;
+  architect: {
+    Random: new (inputSize: number, hiddenSize: number, outputSize: number) => Genome;
+  };
+  methods: {
+    selection: { TOURNAMENT: unknown };
+    mutation: Record<string, unknown>;
+  };
+  Network: {
+    crossOver(parent1: Genome, parent2: Genome): Genome;
+    fromJSON(json: unknown): Genome;
+  };
+}
+
+const api = neataptic as unknown as NeatapticApi;
+const { Neat, architect } = api;
 
 // Neural network input/output sizes
 const INPUT_SIZE = GAME_CONSTANTS.NUM_SENSORS + 4; // sensors + velocity + angVel + steering + acceleration
 const OUTPUT_SIZE = 3; // steering, acceleration, brake
 
 export class NEATController {
-  private neat: any;
+  private neat: NeatInstance;
   private generation: number = 0;
   private bestFitness: number = 0;
   private fitnessHistory: number[] = [];
@@ -27,14 +61,14 @@ export class NEATController {
         elitism: Math.floor(populationSize * 0.1),
         mutationRate: 0.3,
         mutationAmount: 2,
-        selection: neataptic.methods.selection.TOURNAMENT,
+        selection: api.methods.selection.TOURNAMENT,
         mutation: [
-          neataptic.methods.mutation.ADD_NODE,
-          neataptic.methods.mutation.ADD_CONN,
-          neataptic.methods.mutation.MOD_WEIGHT,
-          neataptic.methods.mutation.MOD_BIAS,
-          neataptic.methods.mutation.SUB_NODE,
-          neataptic.methods.mutation.SUB_CONN,
+          api.methods.mutation.ADD_NODE,
+          api.methods.mutation.ADD_CONN,
+          api.methods.mutation.MOD_WEIGHT,
+          api.methods.mutation.MOD_BIAS,
+          api.methods.mutation.SUB_NODE,
+          api.methods.mutation.SUB_CONN,
         ],
         network: new architect.Random(INPUT_SIZE, 4, OUTPUT_SIZE),
       }
@@ -44,7 +78,7 @@ export class NEATController {
   /**
    * Get the current population of neural networks
    */
-  getPopulation(): any[] {
+  getPopulation(): Genome[] {
     return this.neat.population;
   }
 
@@ -96,7 +130,7 @@ export class NEATController {
     this.neat.sort();
 
     // Get stats before evolution
-    const scores = this.neat.population.map((g: any) => g.score || 0);
+    const scores = this.neat.population.map(g => g.score || 0);
     this.bestFitness = Math.max(...scores);
     const avgFitness = scores.reduce((a: number, b: number) => a + b, 0) / scores.length;
     const worstFitness = Math.min(...scores);
@@ -104,7 +138,7 @@ export class NEATController {
     this.fitnessHistory.push(this.bestFitness);
 
     // Create new generation
-    const newPopulation: any[] = [];
+    const newPopulation: Genome[] = [];
 
     // Elitism: keep top performers
     const eliteCount = Math.floor(this.neat.popsize * 0.1);
@@ -119,7 +153,7 @@ export class NEATController {
       const parent2 = this.tournamentSelect();
 
       // Crossover
-      const child = neataptic.Network.crossOver(parent1, parent2);
+      const child = api.Network.crossOver(parent1, parent2);
 
       // Mutation
       child.mutate(this.neat.mutation[Math.floor(Math.random() * this.neat.mutation.length)]);
@@ -142,7 +176,7 @@ export class NEATController {
   /**
    * Tournament selection
    */
-  private tournamentSelect(): any {
+  private tournamentSelect(): Genome {
     const tournamentSize = 3;
     let best = null;
     let bestScore = -Infinity;
@@ -150,8 +184,9 @@ export class NEATController {
     for (let i = 0; i < tournamentSize; i++) {
       const idx = Math.floor(Math.random() * this.neat.population.length);
       const genome = this.neat.population[idx];
-      if (genome.score > bestScore) {
-        bestScore = genome.score;
+      const score = genome.score ?? 0;
+      if (score > bestScore) {
+        bestScore = score;
         best = genome;
       }
     }
@@ -183,7 +218,7 @@ export class NEATController {
   /**
    * Get the best performing genome
    */
-  getBestGenome(): any {
+  getBestGenome(): Genome {
     this.neat.sort();
     return this.neat.population[0];
   }
@@ -199,9 +234,9 @@ export class NEATController {
   /**
    * Load a genome from serialized data
    */
-  loadGenome(serialized: string): any {
+  loadGenome(serialized: string): Genome {
     const json = JSON.parse(serialized);
-    return neataptic.Network.fromJSON(json);
+    return api.Network.fromJSON(json);
   }
 
   /**

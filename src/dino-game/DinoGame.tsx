@@ -46,7 +46,7 @@ export type Recording = {
   seed: number;
   frames: RecordingFrame[];
   duration: number;
-  meta?: Record<string, any>;
+  meta?: Record<string, unknown>;
 };
 /* ===================================================================== */
 
@@ -246,9 +246,14 @@ export default function DinoGame(
   const elapsedRef = useRef(0);
   const recordingRef = useRef<Recording | null>(null);
 
-  useEffect(() => {
+  const resetSeedRef = useRef<() => void>(() => {});
+  resetSeedRef.current = () => {
     randRef.current = createLCG(state.seed);
     genStars();
+  };
+
+  useEffect(() => {
+    resetSeedRef.current();
   }, [state.seed]);
 
   useEffect(() => {
@@ -261,37 +266,47 @@ export default function DinoGame(
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
+  const handleKeyDownRef = useRef<(e: KeyboardEvent) => void>(() => {});
+  handleKeyDownRef.current = (e: KeyboardEvent) => {
+    if (e.repeat) return;
+    if (disableUserControl) {
+      if (e.key === 'p') togglePause();
+      if (e.key === 'r') restart();
+      return;
+    }
+    if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w') {
+      e.preventDefault();
+      const st = stateRef.current;
+      if (!st.running) {
+        restart();
+      } else {
+        const dinoHeight = st.ducking ? DINO_DUCK_HEIGHT : DINO_HEIGHT;
+        const onGround = st.dinoY >= FLOOR_Y - dinoHeight - 0.5;
+        if (onGround) st.dinoVy = JUMP_VELOCITY;
+      }
+    } else if (e.key === 'ArrowDown' || e.key === 's') {
+      if (stateRef.current.running) stateRef.current.ducking = true;
+    } else if (e.key === 'p') {
+      togglePause();
+    } else if (e.key === 'r') {
+      restart();
+    }
+  };
+
+  const handleKeyUpRef = useRef<(e: KeyboardEvent) => void>(() => {});
+  handleKeyUpRef.current = (e: KeyboardEvent) => {
+    if (disableUserControl) return;
+    if (e.key === 'ArrowDown' || e.key === 's') {
+      stateRef.current.ducking = false;
+    }
+  };
+
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.repeat) return;
-      if (disableUserControl) {
-        if (e.key === 'p') togglePause();
-        if (e.key === 'r') restart();
-        return;
-      }
-      if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w') {
-        e.preventDefault();
-        const st = stateRef.current;
-        if (!st.running) {
-          restart();
-        } else {
-          const dinoHeight = st.ducking ? DINO_DUCK_HEIGHT : DINO_HEIGHT;
-          const onGround = st.dinoY >= FLOOR_Y - dinoHeight - 0.5;
-          if (onGround) st.dinoVy = JUMP_VELOCITY;
-        }
-      } else if (e.key === 'ArrowDown' || e.key === 's') {
-        if (stateRef.current.running) stateRef.current.ducking = true;
-      } else if (e.key === 'p') {
-        togglePause();
-      } else if (e.key === 'r') {
-        restart();
-      }
+      handleKeyDownRef.current(e);
     }
     function onKeyUp(e: KeyboardEvent) {
-      if (disableUserControl) return;
-      if (e.key === 'ArrowDown' || e.key === 's') {
-        stateRef.current.ducking = false;
-      }
+      handleKeyUpRef.current(e);
     }
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
@@ -302,7 +317,8 @@ export default function DinoGame(
   }, []);
 
   // Seed + autoStart management (also respected during replay)
-  useEffect(() => {
+  const syncSeedAndAutoStartRef = useRef<() => void>(() => {});
+  syncSeedAndAutoStartRef.current = () => {
     const st = stateRef.current;
     if (typeof seed === 'number' && (seed >>> 0) !== st.seed) {
       const newSeed = seed >>> 0;
@@ -316,6 +332,10 @@ export default function DinoGame(
     if (autoStart && !st.running) {
       if (st.gameOver) restart(); else start();
     }
+  };
+
+  useEffect(() => {
+    syncSeedAndAutoStartRef.current();
   }, [seed, autoStart]);
 
   function start() {
@@ -588,7 +608,13 @@ export default function DinoGame(
         gameOver: true,
         highScore: Math.max(s.highScore, s.score),
       }));
-      if (onEpisodeEnd) { try { onEpisodeEnd(Math.floor(st.score), st.seed); } catch {} }
+      if (onEpisodeEnd) {
+        try {
+          onEpisodeEnd(Math.floor(st.score), st.seed);
+        } catch {
+          // Consumer callbacks must not interrupt cleanup after a collision.
+        }
+      }
       if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
       return;
     }
@@ -684,7 +710,7 @@ export default function DinoGame(
 
     const last = getLastObstacle();
     const required = minSafeGap(st.speed, last, 'bird', altitudeIdx);
-    let x = Math.max(GAME_WIDTH + 20, last ? last.x + last.width + required : GAME_WIDTH + 20);
+    const x = Math.max(GAME_WIDTH + 20, last ? last.x + last.width + required : GAME_WIDTH + 20);
 
     stateRef.current.obstacles.push({ id: nextIdRef.current++, x, width, height, yTop, passed: false, kind: 'bird', altitudeIdx });
   }
@@ -866,16 +892,21 @@ export default function DinoGame(
     touchStartRef.current = null;
   }
 
-  useEffect(() => {
+  const initializeCanvasRef = useRef<() => void>(() => {});
+  initializeCanvasRef.current = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const dpr = Math.max(1, Math.min(2, (window as any).devicePixelRatio || 1));
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
     canvas.width = GAME_WIDTH * dpr;
     canvas.height = GAME_HEIGHT * dpr;
     const ctx = canvas.getContext('2d');
     if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     genStars();
     render(ctx!);
+  };
+
+  useEffect(() => {
+    initializeCanvasRef.current();
   }, []);
 
   useEffect(() => {
