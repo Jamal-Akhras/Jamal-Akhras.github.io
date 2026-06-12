@@ -1,4 +1,4 @@
-import { memo, useMemo } from "react";
+import { memo, useMemo, useState, type KeyboardEvent } from "react";
 import { Link } from "react-router-dom";
 import type { ActiveNode } from "../../constants/terminalContent";
 
@@ -30,6 +30,16 @@ const OUTPUT_NODES = [
   { id: "racer", label: "AI Racer", subtitle: "Racing Game", y: 186, path: "/ai-racer" },
 ];
 
+// Which input skills "feed" each clickable node — fixed so the lit connections
+// are consistent and meaningful rather than random. Indices into INPUT_NODES.
+const INPUT_MAP: Record<string, number[]> = {
+  core: [0, 1, 2], // Python, TypeScript, RL
+  values: [2, 3], // RL, Control Systems
+  academics: [0, 2], // Python, RL
+  athletics: [3], // Control Systems
+  interests: [1, 3], // TypeScript, Control Systems
+};
+
 // Node positions (x-coordinates)
 const INPUT_CX = 55;
 const CORE_CX = 160;
@@ -41,26 +51,47 @@ const INPUT_RADIUS = 14;
 const CORE_RADIUS = 28;
 const VALUES_RADIUS = 28;
 const PROC_RADIUS = 22;
-const OUTPUT_RADIUS = 18;
+const OUTPUT_RADIUS = 23;
 
 export const NeuralNetwork = memo(function NeuralNetwork({ activeNode, setActiveNode, isActive }: NeuralNetworkProps) {
-  const activeInputIndices = useMemo(() => {
-    if (!activeNode) return new Set<number>();
-
-    // Shuffle and pick 2-4 random indices
-    const indices = [0, 1, 2, 3];
-    for (let i = indices.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [indices[i], indices[j]] = [indices[j], indices[i]];
-    }
-    const count = 2 + Math.floor(Math.random() * 3); // 2, 3, or 4
-    return new Set(indices.slice(0, count));
-  }, [activeNode]);
+  const activeInputIndices = useMemo(
+    () => new Set<number>(activeNode ? INPUT_MAP[activeNode] ?? [] : []),
+    [activeNode]
+  );
 
   const ambientClass = (variant: number) => isActive ? `animate-ambient-comet-${variant}` : "";
 
+  // Keyboard-focused node (for a visible focus ring).
+  const [focusedId, setFocusedId] = useState<string | null>(null);
+
+  // Shared interactivity (mouse + keyboard + screen reader) for clickable nodes.
+  const nodeProps = (id: ActiveNode, label: string) => {
+    const toggle = () => setActiveNode(activeNode === id ? null : id);
+    return {
+      role: "button" as const,
+      tabIndex: isActive ? 0 : -1, // not focusable while the network is hidden behind the quote
+      "aria-label": label,
+      "aria-pressed": activeNode === id,
+      className: "cursor-pointer outline-none",
+      onClick: toggle,
+      onKeyDown: (e: KeyboardEvent) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          toggle();
+        }
+      },
+      onFocus: () => setFocusedId(id),
+      onBlur: () => setFocusedId(null),
+    };
+  };
+
+  const focusRing = (cx: number, cy: number, r: number, id: string) =>
+    focusedId === id ? (
+      <circle cx={cx} cy={cy} r={r + 7} fill="none" stroke="#fff" strokeOpacity={0.85} strokeWidth={1.5} strokeDasharray="3 3" />
+    ) : null;
+
   return (
-    <svg viewBox="0 0 450 295" className="w-full h-auto">
+    <svg viewBox="0 0 450 295" className="w-full h-auto" role="group" aria-label="Interactive skills network — select a node to explore, or open a project">
       {/* Definitions */}
       <defs>
         <pattern id="dotGrid" width="20" height="20" patternUnits="userSpaceOnUse">
@@ -301,10 +332,8 @@ export const NeuralNetwork = memo(function NeuralNetwork({ activeNode, setActive
       })}
 
       {/* Core node (clickable) */}
-      <g
-        onClick={() => setActiveNode(activeNode === "core" ? null : "core")}
-        className="cursor-pointer"
-      >
+      <g {...nodeProps("core", "Core — about my technical background")}>
+        {focusRing(CORE_CX, CORE_NODE.y, CORE_RADIUS, "core")}
         {(activeNode === "core" || activeNode) && (
           <circle
             cx={CORE_CX}
@@ -341,10 +370,8 @@ export const NeuralNetwork = memo(function NeuralNetwork({ activeNode, setActive
       </g>
 
       {/* Values node (clickable) */}
-      <g
-        onClick={() => setActiveNode(activeNode === "values" ? null : "values")}
-        className="cursor-pointer"
-      >
+      <g {...nodeProps("values", "Values — what drives me")}>
+        {focusRing(CORE_CX, VALUES_NODE.y, VALUES_RADIUS, "values")}
         {(activeNode === "values" || activeNode) && (
           <circle
             cx={CORE_CX}
@@ -382,11 +409,8 @@ export const NeuralNetwork = memo(function NeuralNetwork({ activeNode, setActive
 
       {/* Processing nodes (clickable) */}
       {PROCESSING_NODES.map((node) => (
-        <g
-          key={node.id}
-          onClick={() => setActiveNode(activeNode === node.id ? null : node.id as ActiveNode)}
-          className="cursor-pointer"
-        >
+        <g key={node.id} {...nodeProps(node.id as ActiveNode, `${node.label} — explore`)}>
+          {focusRing(PROC_CX, node.y, PROC_RADIUS, node.id)}
           {activeNode === node.id && (
             <circle
               cx={PROC_CX}
@@ -423,28 +447,66 @@ export const NeuralNetwork = memo(function NeuralNetwork({ activeNode, setActive
         </g>
       ))}
 
-      {/* Output nodes (Link components) */}
+      {/* Output nodes — the playable projects (navigation links) */}
       {OUTPUT_NODES.map((node) => (
-        <Link key={node.id} to={node.path}>
-          <g className="cursor-pointer">
-            <circle
-              cx={OUTPUT_CX}
-              cy={node.y}
-              r={OUTPUT_RADIUS}
-              fill="rgba(255,255,255,0.05)"
-              stroke="rgba(244,114,182,0.4)"
-              strokeWidth={1}
-              className="hover:stroke-pink-400 hover:fill-pink-500/10 transition-all duration-300"
-            />
-            <text x={OUTPUT_CX} y={node.y + 2} textAnchor="middle" className="fill-pink-200 text-[7px] font-bold font-mono tracking-wider" filter="url(#textShadow)">
+        <Link
+          key={node.id}
+          to={node.path}
+          aria-label={`Play ${node.label} — ${node.subtitle}`}
+          tabIndex={isActive ? 0 : -1}
+          className="group cursor-pointer outline-none"
+          onFocus={() => setFocusedId(node.id)}
+          onBlur={() => setFocusedId(null)}
+        >
+          <g>
+            {focusRing(OUTPUT_CX, node.y, OUTPUT_RADIUS, node.id)}
+            {/* Badge (scales on hover/focus); labels stay put */}
+            <g
+              className="transition-transform duration-200 ease-out group-hover:scale-110 group-focus-visible:scale-110"
+              style={{ transformBox: "fill-box", transformOrigin: "center" }}
+            >
+              {/* Idle "play me" pulse to invite interaction */}
+              {isActive && (
+                <circle cx={OUTPUT_CX} cy={node.y} r={OUTPUT_RADIUS + 4} fill="none" stroke="#f472b6" strokeWidth={1.5} opacity={0.35} className="animate-pulse" />
+              )}
+              <circle
+                cx={OUTPUT_CX}
+                cy={node.y}
+                r={OUTPUT_RADIUS}
+                fill="rgba(244,114,182,0.12)"
+                stroke="#f472b6"
+                strokeWidth={2}
+                className="transition-all duration-300 group-hover:fill-pink-500/25"
+                filter="url(#glow)"
+              />
+              {/* Play triangle */}
+              <path
+                d={`M ${OUTPUT_CX - 5} ${node.y - 7} L ${OUTPUT_CX + 8} ${node.y} L ${OUTPUT_CX - 5} ${node.y + 7} Z`}
+                fill="#fde7f3"
+                className="transition-colors duration-300 group-hover:fill-white"
+              />
+            </g>
+            <text x={OUTPUT_CX} y={node.y + OUTPUT_RADIUS + 12} textAnchor="middle" className="fill-pink-100 text-[8px] font-bold font-mono tracking-wider" filter="url(#textShadow)">
               {node.label.toUpperCase()}
             </text>
-            <text x={OUTPUT_CX} y={node.y + 29} textAnchor="middle" className="fill-pink-300/80 text-[7px] font-mono tracking-wide" filter="url(#textShadow)">
+            <text x={OUTPUT_CX} y={node.y + OUTPUT_RADIUS + 22} textAnchor="middle" className="fill-pink-300/80 text-[7px] font-mono tracking-wide" filter="url(#textShadow)">
               {node.subtitle.toUpperCase()}
             </text>
           </g>
         </Link>
       ))}
+
+      {/* Interactivity hint */}
+      {isActive && !activeNode && (
+        <text
+          x={225}
+          y={290}
+          textAnchor="middle"
+          className="fill-indigo-300/60 text-[8px] font-mono tracking-[0.2em] animate-pulse"
+        >
+          ◂ CLICK A NODE TO EXPLORE ▸
+        </text>
+      )}
     </svg>
   );
 });
