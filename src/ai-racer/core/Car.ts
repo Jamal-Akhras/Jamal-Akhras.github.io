@@ -1,6 +1,6 @@
 // src/ai-racer/core/Car.ts
 import Matter from 'matter-js';
-import type { CarState, RacingAction, RacingObservation, Track } from './types';
+import type { CarState, RacingAction, RacingObservation, Track, RewardWeights } from './types';
 import { GAME_CONSTANTS } from './types';
 import type { TrackCollision } from './TrackCollision';
 
@@ -9,7 +9,12 @@ export class Car {
   state: CarState;
   sensorDistances: number[] = [];
   checkpointTimeout: number = GAME_CONSTANTS.CHECKPOINT_TIMEOUT; // s; tunable at runtime
+  trail: { x: number; y: number; speed: number }[] = []; // sampled path this generation
   private timeSinceCheckpoint = 0; // s since the last checkpoint (anti-circling)
+  private aliveTime = 0; // s this car has been driving (for average speed)
+  private steeringJerkSum = 0; // accumulated |Δsteering| (for smoothness)
+  private jerkSamples = 0;
+  private lastSteering = 0;
 
   private static idCounter = 0;
 
@@ -126,6 +131,12 @@ export class Car {
     this.state.angularVelocity = yawRate;
     this.state.lapTime += dt;
     this.state.distanceTraveled += Math.abs(v) * dt;
+
+    // Telemetry for reward shaping
+    this.aliveTime += dt;
+    this.steeringJerkSum += Math.abs(this.state.steering - this.lastSteering);
+    this.lastSteering = this.state.steering;
+    this.jerkSamples++;
   }
 
   /**
@@ -229,20 +240,33 @@ export class Car {
     this.state.lapTime = 0;
     this.state.distanceTraveled = 0;
     this.timeSinceCheckpoint = 0;
+    this.aliveTime = 0;
+    this.steeringJerkSum = 0;
+    this.jerkSamples = 0;
+    this.lastSteering = 0;
+    this.trail.length = 0;
     this.sensorDistances.fill(1);
   }
 
   /**
    * Calculate fitness score for NEAT
    */
-  getFitness(): number {
-    // Checkpoints are the dominant signal: reward following the track in order.
-    let fitness = this.state.checkpointsPassed * 150;
+  getFitness(reward: RewardWeights): number {
+    // Progress (checkpoints) is the accuracy signal: follow the track in order.
+    let fitness = reward.progress * this.state.checkpointsPassed;
 
-    // Small distance term gives an early gradient before the first checkpoint
-    // (so random cars that merely move forward beat ones that stall), but it's
-    // kept low so it can't outweigh actually making progress around the track.
-    fitness += this.state.distanceTraveled * 0.05;
+    // Speed bonus: average speed normalised to [0,1], faded in once the car is
+    // actually making progress so brief sprints into a wall aren't rewarded.
+    const avgSpeed = this.aliveTime > 0 ? this.state.distanceTraveled / this.aliveTime : 0;
+    const progressFactor = Math.min(1, this.state.checkpointsPassed / 5);
+    fitness += reward.speed * Math.min(1, avgSpeed / GAME_CONSTANTS.MAX_SPEED) * progressFactor;
+
+    // Smoothness: penalise jerky steering (mean |Δsteering| per step).
+    const meanJerk = this.jerkSamples > 0 ? this.steeringJerkSum / this.jerkSamples : 0;
+    fitness -= reward.smoothness * meanJerk;
+
+    // Small distance term gives an early gradient before the first checkpoint.
+    fitness += this.state.distanceTraveled * 0.02;
 
     return Math.max(0, fitness);
   }

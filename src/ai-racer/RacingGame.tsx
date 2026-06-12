@@ -8,9 +8,25 @@ import { Car } from './core/Car';
 import { NEATController } from './ai/NEATController';
 import { TrackCollision } from './core/TrackCollision';
 import { drawGrass, drawTrackSurface } from './core/trackRender';
+import { buildNetworkSnapshot, type NetworkSnapshot } from './NetworkView';
 
 // Driving keys whose default browser action (page scroll) we suppress.
 const DRIVE_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ']);
+
+// Sample each car's position every Nth sim step for the racing-line trail.
+const TRAIL_SAMPLE = 3;
+
+// Telemetry colour ramp red (slow) -> yellow -> green (fast).
+function speedColor(t: number): number {
+  const stops = t < 0.5
+    ? [[0xff, 0x3b, 0x3b], [0xff, 0xd8, 0x3b], t * 2]
+    : [[0xff, 0xd8, 0x3b], [0x3b, 0xff, 0x6b], (t - 0.5) * 2];
+  const [c0, c1, k] = stops as [number[], number[], number];
+  const r = Math.round(c0[0] + (c1[0] - c0[0]) * k);
+  const g = Math.round(c0[1] + (c1[1] - c0[1]) * k);
+  const b = Math.round(c0[2] + (c1[2] - c0[2]) * k);
+  return (r << 16) | (g << 8) | b;
+}
 
 // Draw a top-down car. Local frame: +x = forward (length), +y = right (width).
 function drawCar(g: PixiGraphics, cx: number, cy: number, angle: number, color: number, alpha = 1): void {
@@ -47,7 +63,8 @@ interface RacingGameProps {
   height: number;
   populationSize?: number;
   aiConfig?: AIConfig;
-  onGenerationComplete?: (generation: number, bestFitness: number) => void;
+  onGenerationComplete?: (stats: { generation: number; bestFitness: number; avgFitness: number }) => void;
+  onNetwork?: (snapshot: NetworkSnapshot | null) => void;
 }
 
 export default function RacingGame({
@@ -58,6 +75,7 @@ export default function RacingGame({
   populationSize = GAME_CONSTANTS.POPULATION_SIZE,
   aiConfig = DEFAULT_AI_CONFIG,
   onGenerationComplete,
+  onNetwork,
 }: RacingGameProps) {
   // Live config (sim speed, generation time, checkpoint timeout) read each frame
   // via a ref so those knobs apply without restarting the run.
@@ -81,6 +99,9 @@ export default function RacingGame({
   const generationRef = useRef(0);
   const generationTimeRef = useRef(0);
   const renderRef = useRef<() => void>(() => {});
+  const stepCounterRef = useRef(0); // for trail sampling
+  const netFrameRef = useRef(0); // for throttling the network snapshot
+  const bestLineRef = useRef<{ x: number; y: number; speed: number }[]>([]); // best driver's path from last gen
 
   // NEAT controller ref
   const neatRef = useRef<NEATController | null>(null);
@@ -157,6 +178,9 @@ export default function RacingGame({
     if (!engine) return;
     generationTimeRef.current += stepDt;
 
+    // Sample positions periodically so the best car's path can be drawn.
+    const recordTrail = mode === 'watch-ai-learn' && (++stepCounterRef.current % TRAIL_SAMPLE === 0);
+
     for (let i = 0; i < carsRef.current.length; i++) {
       const car = carsRef.current[i];
       if (!car.state.alive) continue;
@@ -182,6 +206,7 @@ export default function RacingGame({
       car.update(stepDt);
       if (collisionRef.current) car.updateSensors(collisionRef.current);
       car.updateCheckpoint(track);
+      if (recordTrail && car.state.alive) car.trail.push({ x: car.body.position.x, y: car.body.position.y, speed: car.state.velocity });
     }
 
     Matter.Engine.update(engine, Math.min(stepDt * 1000, 16.667));
@@ -213,20 +238,37 @@ export default function RacingGame({
       const alive = carsRef.current.filter(c => c.state.alive).length;
       const timeUp = generationTimeRef.current > configRef.current.maxGenerationTime;
       if (alive === 0 || timeUp) {
+        let bestIndex = 0;
+        let bestFit = -Infinity;
+        const reward = configRef.current.reward;
         for (let i = 0; i < carsRef.current.length; i++) {
-          neatRef.current.setFitness(i, carsRef.current[i].getFitness());
+          const f = carsRef.current[i].getFitness(reward);
+          neatRef.current.setFitness(i, f);
+          if (f > bestFit) {
+            bestFit = f;
+            bestIndex = i;
+          }
         }
+        // Keep the best driver's path to overlay during the next generation.
+        bestLineRef.current = carsRef.current[bestIndex].trail.slice();
+
         const stats = neatRef.current.evolve();
         generationRef.current = stats.generation;
         setGeneration(stats.generation);
         setBestFitness(stats.bestFitness);
-        onGenerationComplete?.(stats.generation, stats.bestFitness);
+        onGenerationComplete?.({
+          generation: stats.generation,
+          bestFitness: stats.bestFitness,
+          avgFitness: stats.avgFitness,
+        });
         resetCars();
       }
     }
   }, [mode, track, getPlayerAction, getRandomAction, resetCars, onGenerationComplete]);
 
-  // Main game loop
+  // Main game loop. Kept in a ref so the init effect (which starts the rAF loop)
+  // never depends on its identity — otherwise a changing callback would tear down
+  // and rebuild the whole sim.
   const gameLoop = useCallback((timestamp: number) => {
     if (!runningRef.current) return;
 
@@ -242,8 +284,32 @@ export default function RacingGame({
     setAliveCars(carsRef.current.filter(c => c.state.alive).length);
     renderRef.current();
 
-    rafRef.current = requestAnimationFrame(gameLoop);
-  }, [mode, simulate]);
+    // Throttled snapshot of the current leader's network for the live view.
+    if (mode === 'watch-ai-learn' && onNetwork && neatRef.current && ++netFrameRef.current % 6 === 0) {
+      const cars = carsRef.current;
+      let leader = -1;
+      let bestCp = -1;
+      for (let i = 0; i < cars.length; i++) {
+        if (cars[i].state.alive && cars[i].state.checkpointsPassed > bestCp) {
+          bestCp = cars[i].state.checkpointsPassed;
+          leader = i;
+        }
+      }
+      if (leader >= 0) {
+        const genome = neatRef.current.getPopulation()[leader];
+        if (genome) onNetwork(buildNetworkSnapshot(genome));
+      }
+    }
+  }, [mode, simulate, onNetwork]);
+
+  const gameLoopRef = useRef(gameLoop);
+  gameLoopRef.current = gameLoop;
+
+  // Stable per-frame driver: calls the latest gameLoop and reschedules itself.
+  const frameTick = useCallback((timestamp: number) => {
+    gameLoopRef.current(timestamp);
+    if (runningRef.current) rafRef.current = requestAnimationFrame(frameTick);
+  }, []);
 
   // Render only the cars each frame; the track is drawn once into its own layer.
   const render = useCallback(() => {
@@ -251,6 +317,18 @@ export default function RacingGame({
     if (!g) return;
 
     g.clear();
+
+    // Best driver's racing line from the previous generation, coloured by speed
+    // (red = slow / braking, green = fast).
+    const line = bestLineRef.current;
+    if (mode === 'watch-ai-learn' && line.length > 1) {
+      for (let i = 1; i < line.length; i++) {
+        const a = line[i - 1];
+        const b = line[i];
+        const t = Math.max(0, Math.min(1, b.speed / GAME_CONSTANTS.MAX_SPEED));
+        g.poly([a.x, a.y, b.x, b.y], false).stroke({ width: 3, color: speedColor(t), alpha: 0.95 });
+      }
+    }
 
     // Draw dead cars first (faded) so live cars render on top
     for (const car of carsRef.current) {
@@ -340,6 +418,7 @@ export default function RacingGame({
         const cfg = configRef.current;
         neatRef.current = new NEATController(populationSize, {
           hiddenSize: cfg.hiddenSize,
+          hiddenLayers: cfg.hiddenLayers,
           mutationRate: cfg.mutationRate,
           elitism: cfg.elitism,
         });
@@ -352,7 +431,7 @@ export default function RacingGame({
       // Start game loop
       runningRef.current = true;
       lastTimeRef.current = 0;
-      rafRef.current = requestAnimationFrame(gameLoop);
+      rafRef.current = requestAnimationFrame(frameTick);
     };
 
     // Defer init one frame so React StrictMode's mount->unmount->remount collapses
@@ -413,7 +492,7 @@ export default function RacingGame({
         appRef.current = null;
       }
     };
-  }, [track, mode, width, height, populationSize, initializeCars, gameLoop]);
+  }, [track, mode, width, height, populationSize, initializeCars, frameTick]);
 
   return (
     <div className="relative">

@@ -184,22 +184,32 @@ export const GAME_CONSTANTS = {
 // AI / training configuration ("The Nerdy Stuff")
 // ============================================================================
 
+export interface RewardWeights {
+  progress: number; // per checkpoint reached (track accuracy / following the line)
+  speed: number; // bonus for high average speed (rewards faster laps)
+  smoothness: number; // penalty for jerky steering (rewards smooth driving)
+}
+
 export interface AIConfig {
-  hiddenSize: number; // neurons in the network's hidden layer (restart)
+  hiddenLayers: number; // number of hidden layers (restart)
+  hiddenSize: number; // neurons per hidden layer (restart)
   mutationRate: number; // 0..1 (restart)
   elitism: number; // fraction of top genomes kept unchanged, 0..1 (restart)
   checkpointTimeout: number; // s without a new checkpoint before a car is killed (live)
   maxGenerationTime: number; // s per generation (live)
   simSpeed: number; // simulation sub-steps per frame while watching (live)
+  reward: RewardWeights; // fitness shaping (live)
 }
 
 export const DEFAULT_AI_CONFIG: AIConfig = {
+  hiddenLayers: 1,
   hiddenSize: 8,
   mutationRate: GAME_CONSTANTS.MUTATION_RATE,
   elitism: 0.1,
   checkpointTimeout: GAME_CONSTANTS.CHECKPOINT_TIMEOUT,
   maxGenerationTime: GAME_CONSTANTS.MAX_GENERATION_TIME,
   simSpeed: 4,
+  reward: { progress: 150, speed: 50, smoothness: 20 },
 };
 
 // ============================================================================

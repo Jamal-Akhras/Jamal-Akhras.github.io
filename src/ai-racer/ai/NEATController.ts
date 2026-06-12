@@ -3,8 +3,19 @@ import neataptic from 'neataptic';
 import type { RacingObservation, RacingAction, GenerationStats } from '../core/types';
 import { GAME_CONSTANTS } from '../core/types';
 
-interface Genome {
+export interface GenomeNode {
+  type: string; // 'input' | 'hidden' | 'output'
+  activation: number;
+}
+export interface GenomeConnection {
+  from: GenomeNode;
+  to: GenomeNode;
+  weight: number;
+}
+export interface Genome {
   score?: number;
+  nodes: GenomeNode[];
+  connections: GenomeConnection[];
   activate(input: number[]): number[];
   mutate(method: unknown): void;
   toJSON(): unknown;
@@ -47,6 +58,7 @@ const OUTPUT_SIZE = 3; // steering, acceleration, brake
 
 export interface NEATOptions {
   hiddenSize?: number;
+  hiddenLayers?: number;
   mutationRate?: number;
   elitism?: number; // fraction 0..1
 }
@@ -60,6 +72,8 @@ export class NEATController {
 
   constructor(populationSize: number = GAME_CONSTANTS.POPULATION_SIZE, options: NEATOptions = {}) {
     const hiddenSize = options.hiddenSize ?? 8;
+    const hiddenLayers = Math.max(1, Math.round(options.hiddenLayers ?? 1));
+    const layers = Array.from({ length: hiddenLayers }, () => hiddenSize);
     const mutationRate = options.mutationRate ?? GAME_CONSTANTS.MUTATION_RATE;
     this.eliteFraction = options.elitism ?? 0.1;
 
@@ -84,7 +98,7 @@ export class NEATController {
         ],
         // Fully-connected MLP so every sensor influences the outputs from the
         // start (a sparse Random net leaves steering near-constant -> cars circle).
-        network: new architect.Perceptron(INPUT_SIZE, hiddenSize, OUTPUT_SIZE),
+        network: new architect.Perceptron(INPUT_SIZE, ...layers, OUTPUT_SIZE),
       }
     );
   }

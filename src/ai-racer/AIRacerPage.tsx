@@ -1,11 +1,16 @@
 // src/ai-racer/AIRacerPage.tsx
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import DecorativeBg from '../components/DecorativeBg';
 import TrackEditor from './track-editor/TrackEditor';
 import RacingGame from './RacingGame';
-import type { Track, GameMode, AIConfig } from './core/types';
+import { FitnessChart, type FitnessPoint } from './FitnessChart';
+import { NetworkView, type NetworkSnapshot } from './NetworkView';
+import type { Track, GameMode, AIConfig, RewardWeights } from './core/types';
 import { GAME_CONSTANTS, DEFAULT_AI_CONFIG } from './core/types';
+
+// Keys of AIConfig whose value is a plain number (so sliders can bind to them).
+type NumericConfigKey = { [K in keyof AIConfig]: AIConfig[K] extends number ? K : never }[keyof AIConfig];
 
 export default function AIRacerPage() {
   const [mode, setMode] = useState<GameMode>('draw');
@@ -18,6 +23,19 @@ export default function AIRacerPage() {
   const [restartKey, setRestartKey] = useState(0); // bump to remount the sim (apply structural params)
   const setCfg = <K extends keyof AIConfig>(key: K, value: AIConfig[K]) =>
     setAiConfig((c) => ({ ...c, [key]: value }));
+  const setReward = <K extends keyof RewardWeights>(key: K, value: number) =>
+    setAiConfig((c) => ({ ...c, reward: { ...c.reward, [key]: value } }));
+
+  const [networkSnapshot, setNetworkSnapshot] = useState<NetworkSnapshot | null>(null);
+  const handleNetwork = useCallback((snap: NetworkSnapshot | null) => setNetworkSnapshot(snap), []);
+
+  // Best/avg fitness per generation for the training chart.
+  const [fitnessHistory, setFitnessHistory] = useState<FitnessPoint[]>([]);
+  // Stable so RacingGame's loop isn't torn down each time a generation completes.
+  const handleGeneration = useCallback((stats: FitnessPoint) => {
+    // generation 1 means a fresh run (new network) -> start the series over.
+    setFitnessHistory((h) => (stats.generation <= 1 ? [stats] : [...h, stats]));
+  }, []);
 
   const handleTrackComplete = (newTrack: Track) => {
     setTrack(newTrack);
@@ -117,33 +135,29 @@ export default function AIRacerPage() {
     </div>
   );
 
-  // A labelled slider bound to one AIConfig field.
-  const cfgSlider = (
-    label: string,
-    key: keyof AIConfig,
-    min: number,
-    max: number,
-    step: number,
-    suffix = '',
-  ) => {
-    const v = aiConfig[key];
-    return (
-      <label className="flex flex-col gap-1 text-xs text-zinc-300">
-        <span>
-          {label}: <span className="font-mono text-white">{Number.isInteger(v) ? v : v.toFixed(2)}{suffix}</span>
-        </span>
-        <input
-          type="range"
-          min={min}
-          max={max}
-          step={step}
-          value={v}
-          onChange={(e) => setCfg(key, Number(e.target.value))}
-          className="w-full accent-indigo-400"
-        />
-      </label>
-    );
-  };
+  // A labelled slider for one numeric AIConfig field.
+  const sliderRow = (label: string, value: number, min: number, max: number, step: number, suffix: string, onChange: (v: number) => void) => (
+    <label className="flex flex-col gap-1 text-xs text-zinc-300">
+      <span>
+        {label}: <span className="font-mono text-white">{Number.isInteger(value) ? value : value.toFixed(2)}{suffix}</span>
+      </span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full accent-indigo-400"
+      />
+    </label>
+  );
+
+  const cfgSlider = (label: string, key: NumericConfigKey, min: number, max: number, step: number, suffix = '') =>
+    sliderRow(label, aiConfig[key] as number, min, max, step, suffix, (v) => setCfg(key, v));
+
+  const rewardSlider = (label: string, key: keyof RewardWeights, min: number, max: number, step: number) =>
+    sliderRow(label, aiConfig.reward[key], min, max, step, '', (v) => setReward(key, v));
 
   const nerdyPanel = (
     <div className="mt-3 w-full max-w-2xl rounded-2xl border border-white/10 bg-black/40 p-4 backdrop-blur">
@@ -151,10 +165,21 @@ export default function AIRacerPage() {
         {cfgSlider('Sim speed', 'simSpeed', 1, 10, 1, '×')}
         {cfgSlider('Generation length', 'maxGenerationTime', 5, 60, 1, 's')}
         {cfgSlider('Stall timeout', 'checkpointTimeout', 1, 10, 0.5, 's')}
+        {cfgSlider('Hidden layers', 'hiddenLayers', 1, 4, 1)}
         {cfgSlider('Hidden neurons', 'hiddenSize', 2, 24, 1)}
         {cfgSlider('Mutation rate', 'mutationRate', 0, 1, 0.05)}
         {cfgSlider('Elitism', 'elitism', 0, 0.5, 0.05)}
       </div>
+
+      <div className="mt-3 border-t border-white/10 pt-3">
+        <div className="mb-2 text-xs font-semibold text-zinc-300">Reward function</div>
+        <div className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-3">
+          {rewardSlider('Progress (accuracy)', 'progress', 0, 300, 10)}
+          {rewardSlider('Speed', 'speed', 0, 200, 10)}
+          {rewardSlider('Smoothness', 'smoothness', 0, 100, 5)}
+        </div>
+      </div>
+
       <div className="mt-3 flex items-center gap-3 border-t border-white/10 pt-3">
         <button
           className="rounded-xl bg-indigo-500/80 px-3 py-1.5 text-sm text-white hover:bg-indigo-500"
@@ -163,8 +188,8 @@ export default function AIRacerPage() {
           Restart training
         </button>
         <span className="text-xs text-zinc-500">
-          Sim speed, generation length and stall timeout apply live; hidden neurons,
-          mutation and elitism take effect on restart.
+          Sim speed, generation length, stall timeout and the reward weights apply live;
+          hidden layers/neurons, mutation and elitism take effect on restart.
         </span>
       </div>
     </div>
@@ -256,6 +281,8 @@ export default function AIRacerPage() {
               height={GAME_CONSTANTS.CANVAS_HEIGHT}
               populationSize={populationSize}
               aiConfig={aiConfig}
+              onGenerationComplete={handleGeneration}
+              onNetwork={handleNetwork}
             />
           )}
 
@@ -291,9 +318,32 @@ export default function AIRacerPage() {
             </div>
             {showPopulation && populationControl}
             {nerdyControls}
+            {mode === 'watch-ai-learn' && (
+              <div className="w-[640px] max-w-[95vw]">
+                <FitnessChart data={fitnessHistory} />
+              </div>
+            )}
           </div>
         )}
         </div>
+
+        {/* Training panels */}
+        {mode === 'watch-ai-learn' && !isFullscreen && (
+          <div className="mt-4 grid w-full max-w-4xl grid-cols-1 gap-4 lg:grid-cols-2">
+            <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+              <h3 className="mb-2 text-sm font-semibold text-zinc-200">Training progress</h3>
+              <FitnessChart data={fitnessHistory} />
+              <p className="mt-2 text-xs text-zinc-500">
+                The line on the track is the best driver's path from the previous generation,
+                coloured by speed (red = slow, green = fast).
+              </p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+              <h3 className="mb-2 text-sm font-semibold text-zinc-200">Leader's neural network</h3>
+              <NetworkView snapshot={networkSnapshot} />
+            </div>
+          </div>
+        )}
 
         {/* Instructions */}
         <div className="mt-4 text-sm text-zinc-400">
