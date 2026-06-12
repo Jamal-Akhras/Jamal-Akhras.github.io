@@ -10,8 +10,8 @@ interface NeuralNetworkProps {
 
 // Node data
 const INPUT_NODES = [
-  { id: "python", label: "Python / PyTorch", y: 50 },
-  { id: "typescript", label: "TypeScript / React", y: 115 },
+  { id: "python", label: "Machine Learning", y: 50 },
+  { id: "typescript", label: "Full-Stack Web", y: 115 },
   { id: "rl", label: "Reinforcement Learning", y: 180 },
   { id: "control", label: "Control Systems", y: 245 },
 ];
@@ -33,11 +33,11 @@ const OUTPUT_NODES = [
 // Which input skills "feed" each clickable node — fixed so the lit connections
 // are consistent and meaningful rather than random. Indices into INPUT_NODES.
 const INPUT_MAP: Record<string, number[]> = {
-  core: [0, 1, 2], // Python, TypeScript, RL
+  core: [0, 1, 2], // Machine Learning, Full-Stack Web, RL
   values: [2, 3], // RL, Control Systems
-  academics: [0, 2], // Python, RL
+  academics: [0, 2], // Machine Learning, RL
   athletics: [3], // Control Systems
-  interests: [1, 3], // TypeScript, Control Systems
+  interests: [1, 3], // Full-Stack Web, Control Systems
 };
 
 // Node positions (x-coordinates)
@@ -91,7 +91,7 @@ export const NeuralNetwork = memo(function NeuralNetwork({ activeNode, setActive
     ) : null;
 
   return (
-    <svg viewBox="0 0 450 295" className="w-full h-auto" role="group" aria-label="Interactive skills network — select a node to explore, or open a project">
+    <svg viewBox="-88 0 538 295" className="w-full h-auto" role="group" aria-label="Interactive skills network — select a node to explore, or open a project">
       {/* Definitions */}
       <defs>
         <pattern id="dotGrid" width="20" height="20" patternUnits="userSpaceOnUse">
@@ -128,7 +128,7 @@ export const NeuralNetwork = memo(function NeuralNetwork({ activeNode, setActive
       </defs>
 
       {/* Background grid */}
-      <rect width="100%" height="100%" fill="url(#dotGrid)" opacity="0.5" />
+      <rect x={-88} y={0} width="100%" height="100%" fill="url(#dotGrid)" opacity="0.5" />
 
       {/* Connection paths: All Inputs -> Core */}
       {INPUT_NODES.map((input, i) => (
@@ -308,16 +308,8 @@ export const NeuralNetwork = memo(function NeuralNetwork({ activeNode, setActive
               className="transition-all duration-500"
               style={{ backdropFilter: "blur(8px)" }}
             />
-            <rect
-              x={2}
-              y={node.y - 7}
-              width={INPUT_CX - INPUT_RADIUS - 6}
-              height={14}
-              rx={4}
-              fill="rgba(0,0,0,0.6)"
-            />
             <text
-              x={INPUT_CX - INPUT_RADIUS - 6}
+              x={INPUT_CX - INPUT_RADIUS - 8}
               y={node.y + 3}
               textAnchor="end"
               className={`text-[8px] font-mono transition-all duration-500 ${
