@@ -4,11 +4,13 @@ import ReactDOM from "react-dom/client";
 import { HashRouter, Routes, Route } from "react-router-dom";
 
 import LandingPage from "./LandingPage";
+import NotFound from "./NotFound";
 import "./index.css";
 
 // Heavy routes (pixi / matter / neataptic, framer-motion) are code-split so the
 // landing page doesn't download them up front.
 const Projects = lazy(() => import("./Projects"));
+const CVPage = lazy(() => import("./CVPage"));
 const DinoModesPage = lazy(() => import("./dino-game/DinoModesPage"));
 const AIRacerPage = lazy(() => import("./ai-racer/AIRacerPage"));
 
@@ -25,9 +27,10 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/projects" element={<Projects />} />
+          <Route path="/cv" element={<CVPage />} />
           <Route path="/dino-game" element={<DinoModesPage />} />
           <Route path="/ai-racer" element={<AIRacerPage />} />
-          <Route path="*" element={<LandingPage />} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </Suspense>
     </HashRouter>
