@@ -171,7 +171,7 @@ export default function LandingPage() {
             {/* Main reveal container - only contains the quote */}
             <div
               ref={quoteContainerRef}
-              className={`relative mx-auto transition-all duration-500 ${
+              className={`relative mx-auto ${
                 isRevealed && activeNode ? "max-w-6xl" : "max-w-4xl"
               }`}
               style={{ minHeight: isRevealed ? "auto" : "280px" }}
@@ -190,35 +190,38 @@ export default function LandingPage() {
                 <div className="mx-auto flex w-full max-w-7xl flex-col items-center justify-center gap-6 transition-all duration-700 lg:flex-row lg:gap-12">
                   <motion.div
                     className="flex w-full flex-[1.2] items-center justify-center transform-gpu-3d"
-                    animate={{ x: reduceMotion ? 0 : activeNode ? -24 : 0 }}
-                    transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 150, damping: 20 }}
+                    layout={reduceMotion ? undefined : "position"}
+                    transition={{ layout: { type: "spring", stiffness: 180, damping: 28 } }}
                   >
                     <NeuralNetwork activeNode={activeNode} setActiveNode={setActiveNode} isActive={isRevealed} />
                   </motion.div>
 
                   <AnimatePresence mode="popLayout">
                     {isRevealed && activeNode && (
-                      <div className="w-full max-w-[550px]" style={{ perspective: "1200px", transformStyle: "preserve-3d" }}>
-                        <motion.div
-                          className="w-full transform-gpu-3d"
-                          style={{
-                            transformStyle: "preserve-3d",
-                            transformOrigin: "right center"
-                          }}
-                          initial={reduceMotion ? { opacity: 0 } : { rotateY: -70, z: 0, opacity: 0, filter: "blur(8px)" }}
-                          animate={{
-                            rotateY: 0,
-                            z: reduceMotion ? 0 : 32,
-                            opacity: 1,
-                            filter: "blur(0px)",
-                            boxShadow: "0 0 30px rgba(129,140,248,0.2)"
-                          }}
-                          exit={reduceMotion ? { opacity: 0 } : { rotateY: -35, z: 0, opacity: 0, filter: "blur(6px)", boxShadow: "none" }}
-                          transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 150, damping: 20 }}
-                        >
-                          <Terminal activeNode={activeNode} onClose={() => setActiveNode(null)} />
-                        </motion.div>
-                      </div>
+                      <motion.div
+                        key="terminal"
+                        className="w-full max-w-[550px] transform-gpu-3d"
+                        style={{
+                          transformOrigin: "left center",
+                          transformPerspective: 1400,
+                          borderRadius: "0.75rem",
+                          boxShadow: "0 0 30px rgba(129,140,248,0.18)",
+                        }}
+                        initial={reduceMotion ? { opacity: 0 } : { opacity: 0, rotateY: -35, scale: 0.96 }}
+                        animate={{
+                          opacity: 1,
+                          rotateY: 0,
+                          scale: 1,
+                          transition: reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 180, damping: 24 },
+                        }}
+                        exit={
+                          reduceMotion
+                            ? { opacity: 0, transition: { duration: 0 } }
+                            : { opacity: 0, scale: 0.95, transition: { duration: 0.26, ease: "easeInOut" } }
+                        }
+                      >
+                        <Terminal activeNode={activeNode} onClose={() => setActiveNode(null)} />
+                      </motion.div>
                     )}
                   </AnimatePresence>
                 </div>
