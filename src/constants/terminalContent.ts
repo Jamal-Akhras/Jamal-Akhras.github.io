@@ -76,6 +76,5 @@ export const TERMINAL_CONTENT: Record<NonNullable<ActiveNode>, TerminalContentIt
 };
 
 export const NAV_LINKS = [
-  { href: "#about", label: "About" },
   { href: "#contact", label: "Contact" },
 ];

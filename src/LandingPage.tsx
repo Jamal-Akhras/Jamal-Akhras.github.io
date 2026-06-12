@@ -102,6 +102,7 @@ export default function LandingPage() {
               </a>
             ))}
             <Link to="/projects" className="rounded-xl px-3 py-2 transition-colors hover:bg-bg-hover">Projects</Link>
+            <Link to="/cv" className="rounded-xl px-3 py-2 transition-colors hover:bg-bg-hover">CV</Link>
             <button
               onClick={toggleTheme}
               className="ml-2 rounded-xl p-2 transition-colors hover:bg-bg-hover"
@@ -156,6 +157,13 @@ export default function LandingPage() {
                   className="rounded-xl px-3 py-3 text-text-secondary transition-colors hover:bg-bg-hover"
                 >
                   Projects
+                </Link>
+                <Link
+                  to="/cv"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="rounded-xl px-3 py-3 text-text-secondary transition-colors hover:bg-bg-hover"
+                >
+                  CV
                 </Link>
               </nav>
             </motion.div>
@@ -362,7 +370,7 @@ export default function LandingPage() {
               }}
               transition={{ type: "spring", stiffness: 150, damping: 25 }}
             >
-              ~Ghandi (Probably)
+              ~Gandhi (Probably)
             </motion.p>
 
             {/* CTA Buttons */}
@@ -380,6 +388,9 @@ export default function LandingPage() {
               <a href="#contact" className="btn-tertiary">
                 Get in touch
               </a>
+              <Link to="/cv" className="btn-tertiary">
+                Explore CV
+              </Link>
             </motion.div>
 
             {/* Stats - always visible */}
