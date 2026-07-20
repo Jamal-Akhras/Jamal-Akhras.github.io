@@ -8,7 +8,7 @@ import { Car } from './core/Car';
 import { NEATController } from './ai/NEATController';
 import { TrackCollision } from './core/TrackCollision';
 import { drawGrass, drawTrackSurface } from './core/trackRender';
-import { buildNetworkSnapshot, type NetworkSnapshot } from './NetworkView';
+import { buildNetworkSnapshot, type NetworkSnapshot } from './networkSnapshot';
 
 // Driving keys whose default browser action (page scroll) we suppress.
 const DRIVE_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ']);

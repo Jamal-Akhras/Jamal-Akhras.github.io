@@ -8,7 +8,7 @@ export default function NotFound() {
       <div className="relative z-10">
         <p className="font-mono text-sm tracking-[0.3em] text-accent-primary">ERROR 404</p>
         <h1 className="mt-3 text-5xl font-extrabold tracking-tight sm:text-6xl">Lost in the network</h1>
-        <p className="mt-3 text-text-secondary">That route doesn't exist — there's no node here.</p>
+        <p className="mt-3 text-text-secondary">That route doesn't exist - there's no node here.</p>
         <div className="mt-7 flex justify-center gap-3">
           <Link to="/" className="btn-secondary">Back home</Link>
           <Link to="/projects" className="btn-tertiary">See projects</Link>

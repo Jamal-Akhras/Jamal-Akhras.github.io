@@ -102,7 +102,7 @@ export default function LandingPage() {
               </a>
             ))}
             <Link to="/projects" className="rounded-xl px-3 py-2 transition-colors hover:bg-bg-hover">Projects</Link>
-            <Link to="/cv" className="rounded-xl px-3 py-2 transition-colors hover:bg-bg-hover">CV</Link>
+            <Link to="/experience" className="rounded-xl px-3 py-2 transition-colors hover:bg-bg-hover">Experience</Link>
             <button
               onClick={toggleTheme}
               className="ml-2 rounded-xl p-2 transition-colors hover:bg-bg-hover"
@@ -159,11 +159,11 @@ export default function LandingPage() {
                   Projects
                 </Link>
                 <Link
-                  to="/cv"
+                  to="/experience"
                   onClick={() => setMobileMenuOpen(false)}
                   className="rounded-xl px-3 py-3 text-text-secondary transition-colors hover:bg-bg-hover"
                 >
-                  CV
+                  Experience
                 </Link>
               </nav>
             </motion.div>
@@ -388,15 +388,15 @@ export default function LandingPage() {
               <a href="#contact" className="btn-tertiary">
                 Get in touch
               </a>
-              <Link to="/cv" className="btn-tertiary">
-                Explore CV
+              <Link to="/experience" className="btn-tertiary">
+                Experience
               </Link>
             </motion.div>
 
             {/* Stats - always visible */}
             <div className="mx-auto mt-10 grid max-w-4xl grid-cols-2 gap-3 md:grid-cols-4">
               {[
-                { k: "MComp(hons) CS & AI", v: "University of Bath" },
+                { k: "MComp (Hons) CS & AI", v: "University of Bath" },
                 { k: "Blues Award", v: "Lacrosse 1st Team Captain" },
                 { k: "IMC Prosperity Challenge", v: "Top 10% Globally" },
                 { k: "Bath Hackathon", v: "Tech for Good Winner" },
@@ -422,12 +422,12 @@ export default function LandingPage() {
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="text-center lg:text-left">
                 <h2 className="text-2xl font-extrabold sm:text-3xl">Let's talk</h2>
-                <p className="mt-1 opacity-80">Open to SWE/ML roles. Happy to have a conversation about my projects or anything else.</p>
+                <p className="mt-1 opacity-80">Happy to talk through the engineering, ML, and product work shown here.</p>
               </div>
               <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-center sm:gap-3">
                 <a href="mailto:jamal@alakhras.net" className="inline-flex justify-center rounded-2xl bg-bg-base px-5 py-3 font-semibold text-white ring-1 ring-black/10 transition hover:bg-bg-base/90">Email me</a>
                 <a href="https://github.com/Jamal-Akhras" target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#24292e] px-5 py-3 font-semibold text-white ring-1 ring-black/10 transition hover:bg-[#2f363d]">GitHub</a>
-                <a href="https://linkedin.com/in/jamal-akhras-43120b358" className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#0A66C2] px-5 py-3 font-semibold text-white ring-1 ring-[#0A66C2]/30 hover:bg-[#004182] transition">LinkedIn</a>
+                <a href="https://linkedin.com/in/jamalakhras" target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#0A66C2] px-5 py-3 font-semibold text-white ring-1 ring-[#0A66C2]/30 hover:bg-[#004182] transition">LinkedIn</a>
               </div>
             </div>
           </motion.div>
@@ -437,7 +437,7 @@ export default function LandingPage() {
       {/* Footer */}
       <footer className="border-t border-border-subtle">
         <div className="mx-auto max-w-7xl px-4 py-8 text-center text-text-muted sm:px-6 lg:px-8">
-          © {new Date().getFullYear()} Jamal Akhras — Built with React & Tailwind
+          (c) {new Date().getFullYear()} Jamal Akhras - Built with React & Tailwind
         </div>
       </footer>
     </div>

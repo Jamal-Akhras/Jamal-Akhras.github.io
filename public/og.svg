@@ -18,9 +18,9 @@
   <rect width="1200" height="630" fill="url(#glow)" />
 
   <text x="90" y="250" font-family="system-ui, sans-serif" font-weight="800" font-size="110" fill="url(#name)">Jamal Akhras</text>
-  <text x="96" y="330" font-family="system-ui, sans-serif" font-weight="700" font-size="46" fill="#e5e7eb">CS &amp; AI Engineer</text>
-  <text x="96" y="400" font-family="monospace" font-size="30" fill="#9ca3af">Reliable ML systems · clean APIs · reproducible training</text>
+  <text x="96" y="330" font-family="system-ui, sans-serif" font-weight="700" font-size="44" fill="#e5e7eb">Software &amp; Applied AI Engineer</text>
+  <text x="96" y="400" font-family="monospace" font-size="29" fill="#9ca3af">Backend systems | ML evaluation | workflow platforms</text>
 
   <rect x="96" y="452" width="360" height="3" fill="url(#name)" opacity="0.7" />
-  <text x="96" y="520" font-family="monospace" font-size="26" fill="#818cf8">MComp (Hons) CS &amp; AI — University of Bath</text>
+  <text x="96" y="520" font-family="monospace" font-size="26" fill="#818cf8">MComp (Hons) CS &amp; AI - University of Bath</text>
 </svg>

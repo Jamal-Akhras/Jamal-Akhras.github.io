@@ -5,7 +5,8 @@ import DecorativeBg from '../components/DecorativeBg';
 import TrackEditor from './track-editor/TrackEditor';
 import RacingGame from './RacingGame';
 import { FitnessChart, type FitnessPoint } from './FitnessChart';
-import { NetworkView, type NetworkSnapshot } from './NetworkView';
+import { NetworkView } from './NetworkView';
+import type { NetworkSnapshot } from './networkSnapshot';
 import type { Track, GameMode, AIConfig, RewardWeights } from './core/types';
 import { GAME_CONSTANTS, DEFAULT_AI_CONFIG } from './core/types';
 
